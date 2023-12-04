@@ -6,3 +6,5 @@ from .fedcac_client import FedCACClient
 from .fedrod_client import FedRoDClient
 from .fedprox_client import FedProxClient
 from .fedmoon_client import FedMOONClient
+
+from .fedtta_client import FedTTAClient

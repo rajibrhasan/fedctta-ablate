@@ -4,4 +4,6 @@ from .mnist import MNISTDataset
 from .tiny_imagenet import TinyImagenetDataset
 from .mini_imagenet import MiniImagenetDataset
 from .imagenet import ImagenetDataset
+from .cifar10_test import CIFAR10_TestDataset
+from .cifar100_test import CIFAR100_TestDataset
 from .build_dataset import get_dataset
