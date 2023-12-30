@@ -9,13 +9,12 @@ from .client_template import ClientTemplate
 from fling.model import get_model
 from fling.utils.utils import VariableMonitor
 
-from fling.model.GlobalBatchNorm import CustomResNeXt
 
-@CLIENT_REGISTRY.register('fedtta_client')
-class FedTTAClient(ClientTemplate):
+@CLIENT_REGISTRY.register('fedtent_client')
+class FedTentClient(ClientTemplate):
 
     def __init__(self, args: dict, client_id: int, train_dataset: Iterable = None, test_dataset: Iterable = None):
-        super(FedTTAClient, self).__init__(args, client_id, train_dataset, test_dataset)
+        super(FedTentClient, self).__init__(args, client_id, train_dataset, test_dataset)
         self.args = args
         self.client_id = client_id
         self.class_number = args.data.class_number
@@ -27,14 +26,19 @@ class FedTTAClient(ClientTemplate):
         self.model.load_state_dict(ckpt)
         self.model_state = ckpt
         self.model_anchor = copy.deepcopy(self.model)
-        # replace Custom Batch Normalization with Self-defined BN
-        self.model = CustomResNeXt(self.model)
-
-        self.chosen_layers = []
-        for m in self.model.modules():
+        self.model.requires_grad_(False)
+        params, names = [], []
+        for nm, m in self.model.named_modules():
             if isinstance(m, nn.BatchNorm2d):
-                self.chosen_layers.append(m)
-        self.n_chosen_layers = len(self.chosen_layers)
+                m.requires_grad_(True)
+                m.track_running_stats = False
+                m.running_mean = None
+                m.running_var = None
+                for np, p in m.named_parameters():
+                    if np in ['weight', 'bias']:
+                        params.append(p)
+                        names.append(f"{nm}.{np}")
+        self.optimizer = torch.optim.Adam(params, lr=self.args.learn.optimizer.lr, betas=(0.9, 0.999), weight_decay=0.)
 
     def preprocess_data(self, data):
         return {'x': data['input'].to(self.device), 'y': data['class_id'].to(self.device)}
@@ -75,15 +79,9 @@ class FedTTAClient(ClientTemplate):
         self.model.to('cpu')
         return mean_monitor_variables, feature_indicator
 
-    def update_bnstatistics(self, clean_mean, clean_var):
-        self.global_mean = clean_mean
-        self.global_var = clean_var
-        idx = 0
-        for nm, m in self.model.named_modules():
-            if isinstance(m, nn.BatchNorm2d):
-                m.weighted_mean = clean_mean[idx]
-                m.weighted_var = clean_var[idx]
-                idx += 1
+    def softmax_entropy(self, x: torch.Tensor) -> torch.Tensor:
+        """Entropy of softmax distribution from logits."""
+        return -(x.softmax(1) * x.log_softmax(1)).sum(1)
 
     def adapt(self, test_data, device=None):
         if device is not None:
@@ -94,36 +92,44 @@ class FedTTAClient(ClientTemplate):
 
         # Turn on model grads. collect_params
         self.model.requires_grad_(False)
+        params, names = [], []
+        for nm, m in self.model.named_modules():
+            if isinstance(m, nn.BatchNorm2d):
+                m.requires_grad_(True)
+                m.track_running_stats = False
+                m.running_mean = None
+                m.running_var = None
+                for np, p in m.named_parameters():
+                    if np in ['weight', 'bias']:
+                        params.append(p)
+                        names.append(f"{nm}.{np}")
         self.model.train()
         # Get Local TTA
-        criterion = nn.CrossEntropyLoss()
         monitor = VariableMonitor()
-        with torch.no_grad():
-            for eps in range(self.adapt_iters):
-                self.clean_mean = []
-                for idx, data in enumerate(self.adapt_loader):
-                    preprocessed_data = self.preprocess_data(data)
-                    batch_x, batch_y = preprocessed_data['x'], preprocessed_data['y']
 
-                    out = self.model(batch_x)
-                    y_pred = torch.argmax(out, dim=-1)
+        for eps in range(self.adapt_iters):
+            for idx, data in enumerate(self.adapt_loader):
+                self.optimizer.zero_grad()
+                preprocessed_data = self.preprocess_data(data)
+                batch_x, batch_y = preprocessed_data['x'], preprocessed_data['y']
 
-                    loss = criterion(out, batch_y)
-                    monitor.append(
-                        {
-                            'test_acc': torch.mean((y_pred == preprocessed_data['y']).float()).item(),
-                            'test_loss': loss.item()
-                        },
-                        weight=preprocessed_data['y'].shape[0]
-                    )
+                out = self.model(batch_x)
+                y_pred = torch.argmax(out, dim=-1)
 
-                for nm, m in self.model.named_modules():
-                    if isinstance(m, nn.BatchNorm2d):
-                        self.clean_mean.append(torch.cat([m.batch_mean, m.batch_var], dim=0))
+                loss = self.softmax_entropy(out).mean(0)
+                monitor.append(
+                    {
+                        'test_acc': torch.mean((y_pred == preprocessed_data['y']).float()).item(),
+                        'test_loss': loss.item()
+                    },
+                    weight=preprocessed_data['y'].shape[0]
+                )
+                loss.backward()
+                self.optimizer.step()
 
         mean_monitor_variables = monitor.variable_mean()
         self.model.to('cpu')
-        return self.clean_mean, mean_monitor_variables
+        return mean_monitor_variables
 
     def inference(self, classifier=None, device=None):
         if device is not None:

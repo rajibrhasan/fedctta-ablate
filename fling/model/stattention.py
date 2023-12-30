@@ -4,6 +4,7 @@ import torch.nn.functional as F
 import torch.nn.init as init
 import numpy as np
 from sklearn.cluster import KMeans
+import copy
 
 class TempoAttention(nn.Module):
     def __init__(self, dim, heads, dropout=.1):
@@ -20,14 +21,7 @@ class TempoAttention(nn.Module):
 
     def init_weights(self):
         for m in self.modules():
-            if isinstance(m, nn.Conv2d):
-                init.kaiming_normal_(m.weight, mode='fan_out')
-                if m.bias is not None:
-                    init.constant_(m.bias, 0)
-            elif isinstance(m, nn.BatchNorm2d):
-                init.constant_(m.weight, 1)
-                init.constant_(m.bias, 0)
-            elif isinstance(m, nn.Linear):
+            if isinstance(m, nn.Linear):
                 init.eye_(m.weight)
                 if m.bias is not None:
                     init.zeros_(m.bias)
@@ -39,38 +33,37 @@ class TempoAttention(nn.Module):
         k = self.fc_k(x).view(N, T, self.heads, D).permute(0, 2, 3, 1)  # (b_s, h, d_k, nk)
         v = self.fc_v(x).view(N, T, self.heads, D).permute(0, 2, 1, 3)  # (b_s, h, nk, d_v)
 
-        self.att = torch.matmul(q, k) / np.sqrt(D)  # (b_s, h, nq, nk)
+        self.att = torch.matmul(q, k) / np.sqrt(D)  # (N, heads, T, T)
         if attention_weights is not None:
             self.att = self.att * attention_weights
         if attention_mask is not None:
             self.att = self.att.masked_fill(attention_mask, -np.inf)
         self.att = torch.softmax(self.att, -1)
-        att = self.dropout(self.att)
+        # self.att = self.dropout(self.att)
 
-        out = torch.matmul(att, v).permute(0, 2, 1, 3).contiguous().view(N, T, self.heads * D)  # (b_s, nq, h*d_v)
+        out = torch.matmul(self.att, v).permute(0, 2, 1, 3).contiguous().view(N, T, self.heads * D)  # (N, T, h*d_v)
+        # for i in range(N):
+        #     for j in range(self.heads):
+        #         for k in range(T):
+        #             out[i][k] = torch.mm(self.att[i][j][k].unsqueeze(0), v[i][j]).squeeze(0)
+        out_agg = torch.mean(out, dim=1)
+        # out_agg = out[:, -1, :]
+        return out, out_agg.detach(), self.att.detach()
 
-        return out
-
-def graphStructual(x):
-    avg_feature = torch.mean(x, dim=1)
+def graphStructual(avg_feature, sim_type='cos', threshold=0.9):
+    N, D = avg_feature.shape
     adj_matrix = torch.matmul(avg_feature, avg_feature.t())
-    denominator = torch.outer(torch.norm(avg_feature, dim=1), torch.norm(avg_feature, dim=1))
-    similarity_matrix = adj_matrix / denominator
-    similarity_mask = (similarity_matrix > 0.9).float()
-    return similarity_mask
-
-class GraphConvolution(nn.Module):
-    def __init__(self, input_dim, output_dim, use_bias=True):
-        super(GraphConvolution, self).__init__()
-        self.input_dim = input_dim
-        self.output_dim = output_dim
-        self.use_bias = use_bias
-        self.weight = nn.Parameter(torch.Tensor(input_dim, output_dim))
-        if self.use_bias:
-            self.bias = nn.Parameter(torch.Tensor(output_dim))
-        else:
-            self.register_parameter('bias', None)
-        self.reset_parameters()
+    if sim_type == 'cos':
+        scaling = torch.outer(torch.norm(avg_feature, p=2, dim=1), torch.norm(avg_feature, p=2, dim=1)) ** -1
+        sim = adj_matrix * scaling
+    elif sim_type == 'att':
+        scaling = float(D) ** -0.5
+        sim = torch.softmax(adj_matrix * scaling, dim=-1)
+    else:
+        raise ValueError('graphStructual only support [cos, att]')
+    threshold = torch.mean(sim)
+    graph = (sim > threshold).to(torch.int)
+    return sim, graph
 
 class SpatialAttention(nn.Module):
     def __init__(self, dim, heads, dropout=0., qkv_bias=True):
@@ -115,57 +108,23 @@ class SpatialAttention(nn.Module):
         k = self.geo_k(x).view(N, T, self.heads, D).permute(1, 2, 3, 0)  # (T, head, D, N)
         v = self.geo_v(x).view(N, T, self.heads, D).permute(1, 2, 0, 3)   # (T, head, N, D)
 
-        att = torch.matmul(q, k) / np.sqrt(D)  # (T, head, D, D)
+        self.att = torch.matmul(q, k) / np.sqrt(D)  # (T, head, D, D)
+        raw_att = self.att
+        raw_att = torch.softmax(raw_att, dim=-1)
+        out_raw = torch.matmul(raw_att, v).permute(1, 2, 0, 3).contiguous().view(N, T, self.heads * D)  # (b_s, nq, h*d_v)
+
+        # self.att = torch.matmul(q, k) / (torch.outer(torch.norm(q, p=2, dim=1), torch.norm(k.permute(0, 1, 3, 2), p=2, dim=1)))
+        # self.att = F.cosine_similarity(q, k.permute(0, 1, 3, 2), dim=3)
         if attention_weights is not None:
-            att = att * attention_weights
+            self.att = self.att * attention_weights
         if attention_mask is not None:
-            att = att.masked_fill(attention_mask, -np.inf)
-        att = torch.softmax(att, dim=-1)
-        att = self.dropout(att)
+            self.att = self.att.masked_fill(attention_mask, -np.inf)
+        self.att = torch.softmax(self.att, dim=-1)
+        self.att = self.dropout(self.att)
 
-        out = torch.matmul(att, v).permute(1, 2, 0, 3).contiguous().view(N, T, self.heads * D)  # (b_s, nq, h*d_v)
+        out = torch.matmul(self.att, v).permute(1, 2, 0, 3).contiguous().view(N, T, self.heads * D)  # (b_s, nq, h*d_v)
 
-        return out
-
-class STProject(nn.Module):
-    def __init__(self, input_dim, output_dim, bias=False, drop=0.):
-        super().__init__()
-        self.input_dim = input_dim
-        self.output_dim = output_dim
-        self.bias = bias
-        self.proj = nn.Linear(input_dim, output_dim, bias=bias)
-        self.proj_drop = nn.Dropout(drop)
-
-    def init_weights(self):
-        for m in self.modules():
-            if isinstance(m, nn.Linear):
-                init.eye_(m.weight)
-                if m.bias is not None:
-                    init.zeros_(m.bias)
-
-    def forward(self, x):
-        out = self.proj(x)
-        out = self.proj_drop(out)
-        return out
-
-class ClusterLoss(nn.Module):
-    def __init__(self, num_clusters, distance_threshold=1.0):
-        super(ClusterLoss, self).__init__()
-        self.num_clusters = num_clusters
-        self.distance_threshold = distance_threshold
-
-    def forward(self, features, cluster_assignments, cluster_centers):
-        # 计算每个节点与其所属簇中心的欧氏距离
-        dist_to_assigned_center = torch.norm(features - cluster_centers[cluster_assignments], dim=1)
-
-        # 计算每个节点与其他簇中心的欧氏距离
-        dist_to_other_centers = torch.cat([torch.norm(features - center, dim=1, keepdim=True) for center in cluster_centers], dim=1)
-        dist_to_other_centers.scatter_(1, cluster_assignments.view(-1, 1), float('inf'))  # 将自身簇的距离设为无穷大
-
-        # 计算损失
-        loss = torch.sum(torch.relu(self.distance_threshold - dist_to_assigned_center)) + torch.sum(torch.relu(dist_to_other_centers - self.distance_threshold))
-
-        return loss / features.size(0)  # 归一化损失
+        return out, out_raw, raw_att[-1, 0, :, :].clone().detach()
 
 class ST_block(nn.Module):
     def __init__(self, dim, Theads=1, Sheads=1, proj_bias=False, proj_dropout=.0):
@@ -174,33 +133,107 @@ class ST_block(nn.Module):
 
         self.TA1 = TempoAttention(dim=dim, heads=Theads)
         self.SA1 = SpatialAttention(dim=dim, heads=Sheads)
-        self.TA2 = TempoAttention(dim=dim, heads=Theads)
-        self.SA2 = SpatialAttention(dim=dim, heads=Sheads)
-        # self.Proj = STProject(input_dim=dim, output_dim=dim, bias=proj_bias, drop=proj_dropout)
-
-    def forward(self, x):
-        TA_x = self.TA1(x)
-        SA_x = self.SA1(TA_x)
-        TA_x = self.TA2(SA_x)
-        SA_x = self.SA2(TA_x)
-        # ST_x = self.Proj(SA_x)
-        return SA_x
+        # self.TA2 = TempoAttention(dim=dim, heads=Theads)
 
 
+    def forward(self, x, wotime=False):
+        if wotime:
+            x1, x_agg, t_sim_A = self.TA1(x) # x: after message passing between sequential batches, x_agg: mean which can indicate this area, t_sim_A: [ cidx ][ heads ][ T ]
+
+            _, graph = graphStructual(x[:, -1, :])
+            repr1, repr0, s_sim_A = self.SA1(x, attention_mask=(graph == 0))
+            space_mask = aug_spatiol(s_sim_A, graph)
+            repr2, _, _ = self.SA1(x, attention_mask=(space_mask == 0))
+
+            return repr0, repr1, repr2, t_sim_A, s_sim_A
+        else:
+            x1, x_agg, t_sim_A = self.TA1(x)  # x: after message passing between sequential batches, x_agg: mean which can indicate this area, t_sim_A: [ cidx ][ heads ][ T ]
+            _, graph = graphStructual(x_agg)
+            repr1, repr0, s_sim_A = self.SA1(x1, attention_mask=(graph == 0))
+
+            time_mask = aug_temporal(t_sim_A)
+            # space_mask = aug_spatiol(s_sim_A, graph)
+            x2, _, _ = self.TA1(x, attention_mask=(time_mask == 0))
+            repr2, _, _ = self.SA1(x2, attention_mask=(graph == 0))
+
+            return repr0, repr1, repr2, t_sim_A, s_sim_A
+
+def aug_temporal(t_sim_A, percent=0.95):
+    N, heads, T, T = t_sim_A.shape
+    mask_prob = (1. - t_sim_A).cpu().numpy()
+
+    time_mask = torch.ones_like(t_sim_A)
+    y, x = np.meshgrid(range(T), range(T))
+    mask_number = int((T * T) * percent)
+    zeros = torch.zeros_like(t_sim_A[0, 0, 0, 0])
+    ones = torch.ones_like(t_sim_A[0, 0, 0, 0])
+    for i in range(N):
+        for j in range(heads):
+            if mask_prob[i][j].sum() == 0:
+                break
+            mask_prob[i][j] /= mask_prob[i][j].sum()
+            mask_list = np.random.choice(T * T, size=mask_number, p=mask_prob[i][j].reshape(-1), replace=False)
+            time_mask[i][j][
+                x.reshape(-1)[mask_list],
+                y.reshape(-1)[mask_list]
+            ] = zeros
+            for k in range(T):
+                time_mask[i][j][k][k] = ones
+    return time_mask
+
+def aug_spatiol(sim_mx, graph, percent=0.8):
+    drop_percent = percent
+    add_percent = 1 - percent
+
+    # mask some attention
+    I = torch.eye(graph.shape[0]).cuda()
+    input_graph = graph - I
+    index_list = input_graph.nonzero()  # list of edges [row_idx, col_idx]
+
+    # edge_num = int(index_list.shape[0] / 2)  # treat one undirected edge as two edges
+    edge_num = int(index_list.shape[0])
+    # edge_mask = (input_graph > 0).tril(diagonal=-1).cpu()
+    edge_mask = (input_graph > 0).cpu()
+    add_drop_num = int(edge_num * drop_percent)
+    aug_graph = copy.deepcopy(input_graph)
+
+    drop_prob = sim_mx[edge_mask]
+    drop_prob = (1. - drop_prob).cpu().numpy()  # normalized similarity to get sampling probability
+    drop_prob /= drop_prob.sum()
+    drop_list = np.random.choice(edge_num, size=add_drop_num, p=drop_prob, replace=False)
+    drop_index = index_list[drop_list]
+
+    zeros = torch.zeros_like(aug_graph[0, 0])
+    aug_graph[drop_index[:, 0], drop_index[:, 1]] = zeros
+    # aug_graph[drop_index[:, 1], drop_index[:, 0]] = zeros
+
+    # add some attention
+    A = torch.ones_like(graph)
+    input_graph = A - graph
+    index_list = input_graph.nonzero()
+
+    edge_num = int(index_list.shape[0])
+    edge_mask = (input_graph > 0).cpu()
+    add_num = int(edge_num * add_percent)
+
+    add_prob = sim_mx[edge_mask].cpu().numpy()
+    add_prob /= add_prob.sum()
+    drop_list = np.random.choice(edge_num, size=add_num, p=add_prob, replace=False)
+    drop_index = index_list[drop_list]
+
+    ones = torch.ones_like(aug_graph[0, 0])
+    aug_graph[drop_index[:, 0], drop_index[:, 1]] = ones
+
+    aug_graph = aug_graph + I
+    return aug_graph
 
 if __name__ == '__main__':
     N = 50
     T = 20
     D = 64
     input = torch.randn(50, 20, 64)
-    TA = TempoAttention(dim=64, heads=1)
-    TA_output = TA(input)
-
-    SA = SpatialAttention(dim=64, heads=1)
-    SA_output = SA(TA_output)
-
-    STP = STProject(input_dim=64, output_dim=64, bias=False)
-    ST_output = STP(SA_output)
+    st = ST_block(dim=64)
+    ST_output = st(input)
 
     num_clusters = 3
     data = ST_output.detach().clone()

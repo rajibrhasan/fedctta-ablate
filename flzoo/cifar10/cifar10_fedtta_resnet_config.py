@@ -21,17 +21,17 @@ exp_args = dict(
     server=dict(name='base_server'),
     group=dict(name='adapt_group', aggregation_method='st',
                aggregation_parameters=dict(
-                   name='include',
-                   keywords='block1'
+                   name='all',
+
                )),
-    other=dict(test_freq=3, logging_path='./logging/1205_cifar10_resnet_STiid_c20_b10_cotta_st',
+    other=dict(test_freq=3, logging_path='./logging/1228_cifar10_resnet_STiid_cotta_st',
                model_path='./pretrain/resnet8_cifar10.ckpt',
                online=True,
                adap_iter=1,
                ttt_batch=10,
 
-               is_continue=False,
-               niid=False,
+               is_continue=True,
+               niid=True,
 
                is_average=True,
                method='cotta',

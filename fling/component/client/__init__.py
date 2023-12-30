@@ -8,3 +8,8 @@ from .fedprox_client import FedProxClient
 from .fedmoon_client import FedMOONClient
 
 from .fedtta_client import FedTTAClient
+from .fedtent_client import FedTentClient
+from .fedcotta_client import FedCoTTAClient
+from .fedpl_client import FedPLClient
+from .fedshot_client import FedSHOTClient
+from .fedactmad_client import FedActMADClient

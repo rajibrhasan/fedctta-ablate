@@ -57,9 +57,9 @@ default_exp_args = dict(
         name='resnet8',
         # Arguments used in initializing corresponding model.
         # Channel of input image.
-        input_channel=3,
+        # input_channel=3,
         # Number of classes, i.e. the dimension for output logits.
-        class_number=10,
+        # class_number=10,
     ),
     # Configurations about client.
     client=dict(

@@ -5,7 +5,7 @@ from typing import Iterable, Dict, List
 from prettytable import PrettyTable
 
 from torch.utils.tensorboard import SummaryWriter
-
+import torch
 
 def client_sampling(client_ids: Iterable, sample_rate: float) -> List:
     participated_clients = np.array(client_ids)
@@ -61,3 +61,25 @@ class VariableMonitor:
 
     def variable_mean(self) -> Dict:
         return {k: sum(self.dic[k]) / self.length[k] for k in self.dic.keys()}
+
+class SaveEmb:
+    def __init__(self):
+        self.outputs = []
+        self.int_mean = []
+        self.int_var = []
+
+    def __call__(self, module, module_in, module_out):
+        self.outputs.append(module_out)
+
+    def clear(self):
+        self.outputs = []
+
+    def statistics_update(self):
+        self.int_mean.append(torch.mean(torch.vstack(self.outputs), dim=0))
+        self.int_var.append(torch.var(torch.vstack(self.outputs), dim=0))
+
+    def pop_mean(self):
+        return torch.mean(torch.stack(self.int_mean), dim=0)
+
+    def pop_var(self):
+        return torch.mean(torch.stack(self.int_var), dim=0)

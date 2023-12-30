@@ -53,3 +53,37 @@ class GlobalBatchNorm(nn.BatchNorm2d):
             self.past_var = (self.past_var * self.sum + self.var * sample_num) / (self.sum + sample_num)
         self.sum += sample_num
 
+# Define a custom ResNet-8 model
+class CustomResNeXt(nn.Module):
+    def __init__(self, pretrained_backbone, alpha=0.5):
+        super(CustomResNeXt, self).__init__()
+        # Load the pretrained backbone and initialize alpha
+        self.backbone = pretrained_backbone
+        self.alpha = nn.Parameter(torch.tensor([alpha for _ in range(31)]))
+
+        # Replace BatchNorm layers with CustomBatchNorm2d
+        replace_mods = self.replace_batchnorm(self.backbone)
+        for (parent, name, child) in replace_mods:
+            setattr(parent, name, child)
+
+    def replace_batchnorm(self, parent):
+        replace_mods = []
+        if parent is None:
+            return []
+        for name, child in parent.named_children():
+            child.requires_grad_(False)
+            if isinstance(child, nn.BatchNorm2d):
+                module = GlobalBatchNorm(child.num_features, child.eps, child.momentum, affine=child.affine,
+                                  track_running_stats=child.track_running_stats)
+                module.running_mean = child.running_mean
+                module.running_var = child.running_var
+                module.weight = child.weight
+                module.bias = child.bias
+                replace_mods.append((parent, name, module))
+            else:
+                replace_mods.extend(self.replace_batchnorm(child))
+
+        return replace_mods
+
+    def forward(self, x, mode='compute-logit'):
+        return self.backbone(x, mode)

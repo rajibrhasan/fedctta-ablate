@@ -52,6 +52,69 @@ def non_iid_continual(is_niid, client_number, corupt_number):
             [12, 13, 14, 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11],
             [12, 13, 14, 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11],
             [12, 13, 14, 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11],
+
+            [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14],
+            [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14],
+            [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14],
+            [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14],
+            [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14],
+            [4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 0, 1, 2, 3],
+            [4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 0, 1, 2, 3],
+            [4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 0, 1, 2, 3],
+            [4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 0, 1, 2, 3],
+            [4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 0, 1, 2, 3],
+            [8, 9, 10, 11, 12, 13, 14, 0, 1, 2, 3, 4, 5, 6, 7],
+            [8, 9, 10, 11, 12, 13, 14, 0, 1, 2, 3, 4, 5, 6, 7],
+            [8, 9, 10, 11, 12, 13, 14, 0, 1, 2, 3, 4, 5, 6, 7],
+            [8, 9, 10, 11, 12, 13, 14, 0, 1, 2, 3, 4, 5, 6, 7],
+            [8, 9, 10, 11, 12, 13, 14, 0, 1, 2, 3, 4, 5, 6, 7],
+            [12, 13, 14, 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11],
+            [12, 13, 14, 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11],
+            [12, 13, 14, 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11],
+            [12, 13, 14, 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11],
+            [12, 13, 14, 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11],
+
+            [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14],
+            [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14],
+            [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14],
+            [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14],
+            [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14],
+            [4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 0, 1, 2, 3],
+            [4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 0, 1, 2, 3],
+            [4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 0, 1, 2, 3],
+            [4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 0, 1, 2, 3],
+            [4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 0, 1, 2, 3],
+            [8, 9, 10, 11, 12, 13, 14, 0, 1, 2, 3, 4, 5, 6, 7],
+            [8, 9, 10, 11, 12, 13, 14, 0, 1, 2, 3, 4, 5, 6, 7],
+            [8, 9, 10, 11, 12, 13, 14, 0, 1, 2, 3, 4, 5, 6, 7],
+            [8, 9, 10, 11, 12, 13, 14, 0, 1, 2, 3, 4, 5, 6, 7],
+            [8, 9, 10, 11, 12, 13, 14, 0, 1, 2, 3, 4, 5, 6, 7],
+            [12, 13, 14, 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11],
+            [12, 13, 14, 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11],
+            [12, 13, 14, 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11],
+            [12, 13, 14, 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11],
+            [12, 13, 14, 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11],
+
+            [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14],
+            [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14],
+            [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14],
+            [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14],
+            [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14],
+            [4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 0, 1, 2, 3],
+            [4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 0, 1, 2, 3],
+            [4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 0, 1, 2, 3],
+            [4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 0, 1, 2, 3],
+            [4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 0, 1, 2, 3],
+            [8, 9, 10, 11, 12, 13, 14, 0, 1, 2, 3, 4, 5, 6, 7],
+            [8, 9, 10, 11, 12, 13, 14, 0, 1, 2, 3, 4, 5, 6, 7],
+            [8, 9, 10, 11, 12, 13, 14, 0, 1, 2, 3, 4, 5, 6, 7],
+            [8, 9, 10, 11, 12, 13, 14, 0, 1, 2, 3, 4, 5, 6, 7],
+            [8, 9, 10, 11, 12, 13, 14, 0, 1, 2, 3, 4, 5, 6, 7],
+            [12, 13, 14, 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11],
+            [12, 13, 14, 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11],
+            [12, 13, 14, 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11],
+            [12, 13, 14, 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11],
+            [12, 13, 14, 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11],
         ])
     return corupt_map
 
@@ -78,25 +141,40 @@ def test_origin(net, test_dataloader):
     mean_monitor_variables = monitor.variable_mean()
     print(f'Origin test acc {mean_monitor_variables["test_acc"]}, test loss {mean_monitor_variables["test_loss"]}')
 
-def init_tta_state(args, net, train_dataloader, logger, corrupt_dict, corrupt_test_sets, origin_test_sets):
+def init_tta_state(args, net, ckpt, logger, corrupt_dict, corrupt_test_sets, origin_test_sets, trainloader):
 
     group = get_group(args, logger)
     group.server = get_server(args, test_dataset=corrupt_dict)
     for i in range(args.client.client_num):
         group.append(
             get_client(args=args, client_id=i, train_dataset=corrupt_test_sets[i], test_dataset=origin_test_sets[i]))
+        group.clients[i].init_weight(ckpt=ckpt)
     group.initialize()
 
     # initial
-    if args.other.method == 'fed':
+    if args.other.method == 'bn':
         clean_mean, clean_var = [], []
         for nm, m in net.named_modules():
             if isinstance(m, nn.BatchNorm2d):
-                clean_mean.append(m.weighted_mean)
-                clean_var.append(m.weighted_var)
+                clean_mean.append(m.running_mean)
+                clean_var.append(m.running_var)
         group.init_bnstatistics(clean_mean, clean_var)
+        feature_mean = init_train_feature(args, net, trainloader)
+        group.init_featuremean(feature_mean)
 
     return group
+def init_train_feature(args, net, trainloader):
+    feature_bank = []
+    with torch.no_grad():
+        for idx, data in enumerate(trainloader):
+            x, y = data['input'].to(args.learn.device), data['class_id'].to(args.learn.device)
+            feature, out = net(x, mode='compute-feature-logit')
+            if feature_bank == []:
+                feature_bank = feature
+            else:
+                feature_bank = torch.concatenate((feature_bank, feature), dim=0)
+    feature_mean = torch.mean(feature_bank, dim=0)
+    return feature_mean
 
 
 def FedTTA_Pipeline(args: dict, seed: int = 0) -> None:
@@ -168,22 +246,12 @@ def FedTTA_Pipeline(args: dict, seed: int = 0) -> None:
     # test_origin(net, test_dataloader)
 
     # Initialize group, clients and server.
-    group = init_tta_state(args, net, train_dataloader, logger, corrupt_dict, corrupt_test_sets, origin_test_sets)
+    group = init_tta_state(args, net, ckpt, logger, corrupt_dict, corrupt_test_sets, origin_test_sets, train_dataloader)
 
     # Training loop
     test_monitor_list = [VariableMonitor() for _ in range(len(args.data.corruption))]
     adapt_monitor_list = [VariableMonitor() for _ in range(len(args.data.corruption))]
     fed_adapt_monitor_list = [VariableMonitor() for _ in range(len(args.data.corruption))]
-
-    if args.other.niid:
-        loop_step = np.array([100, ] * args.client.client_num)
-        length = args.client.client_num
-        init_step = []
-        for i in range(length):
-            start, stop = (0, loop_step[i])
-            init_step.append(random.randint(start, stop))
-
-    test_times=0
 
     for level in args.data.level:
         for cidx in range(len(args.data.corruption)):
@@ -193,114 +261,67 @@ def FedTTA_Pipeline(args: dict, seed: int = 0) -> None:
             corupt_map = non_iid_continual(is_niid=args.other.niid, client_number=args.client.client_num,
                                            corupt_number=len(args.data.corruption))
             participated_clients = client_sampling(range(args.client.client_num), args.client.sample_rate)
+
             # Random sample participated clients in each communication round.
-            # if cidx == 0 or not args.other.is_continue:
             if not args.other.is_continue:
-                group = init_tta_state(args, net, train_dataloader, logger, corrupt_dict, corrupt_test_sets,
-                                       origin_test_sets)
+                group = init_tta_state(args, net, ckpt, logger, corrupt_dict, corrupt_test_sets, origin_test_sets, train_dataloader)
 
             global_eps = int(
                 len(corrupt_test_sets[0][args.data.corruption[corupt_map[0][cidx]]][level]) / args.other.ttt_batch)
+
             for i in range(global_eps):
-                if args.other.method == 'fed' or args.other.method == 'fedo' or args.other.method == 'fedbm' or args.other.method == 'bn':
-                    global_mean = []
-                    global_var = []
+                global_feature_indicator = []
+                global_mean = []
+
+                # Update each batch
                 if not args.other.online:
-                    group = init_tta_state(args, net, train_dataloader, logger, corrupt_dict, corrupt_test_sets, origin_test_sets)
+                    group = init_tta_state(args, net, ckpt, logger, corrupt_dict, corrupt_test_sets, origin_test_sets)
 
                 for j in tqdm.tqdm(participated_clients):
-                    if args.other.niid:
-                        # if test_times % loop_step[j] == 0:
-                        #     cor_type=random.randint(0,14)
-                        #     corupt = args.data.corruption[corupt_map[cor_type][cidx]]
-                        #
-                        # else:
-                            # corupt=old_cor_type
-                        corupt = args.data.corruption[corupt_map[j][cidx]]
-                        # while len(corrupt_test_sets[j][corupt][level].indexes) < args.other.ttt_batch:
-                        #     corupt = (corupt + 1) % (args.data.corruption)
-                    # Get the Coruption Type
-                    else:
-                        corupt = args.data.corruption[corupt_map[j][cidx]]
+                    # Collect test data
+                    corupt = args.data.corruption[corupt_map[j][cidx]]
 
-                    indexs = corrupt_test_sets[j][corupt][level].indexes[
-                             0:  args.other.ttt_batch]
+                    indexs = corrupt_test_sets[j][corupt][level].indexes[0:  args.other.ttt_batch]
                     dataset = corrupt_test_sets[j][corupt][level].tot_data
                     corrupt_test_sets[j][corupt][level].indexes = corrupt_test_sets[j][corupt][level].indexes[args.other.ttt_batch : ]
-
                     inference_data = NaiveDataset(tot_data=dataset, indexes=indexs)
 
                     # Test Before Adaptation
-
-                    test_monitor = group.clients[j].test_corupt(test_data=inference_data)
+                    test_monitor, feature_indicator = group.clients[j].test_source(test_data=inference_data)
                     test_monitor_list[cidx].append(test_monitor)
                     logger.logging(
                         f'Client {j} Corupt {corupt}: Old Test Acc {test_monitor["test_acc"]}, Old Test Loss {test_monitor["test_loss"]}'
                     )
-                    # Test Along with Adaptation
-                    if args.other.method == 'tent':
-                        adapt_monitor = group.clients[j].adapt_Tent(test_data=inference_data)
-                        # adapt_monitor = group.clients[j].test_corupt(test_data=inference_data)
-                    elif args.other.method == 'actmad':
-                        adapt_monitor = group.clients[j].adapt_ActMAD(test_data=inference_data)
-                    elif args.other.method == 'cotta':
-                        adapt_monitor = group.clients[j].adapt_cotta(test_data=inference_data, ap=args.cotta.AP, mt=args.cotta.MT, rst=args.cotta.RST)
-                    elif args.other.method == 't3a':
-                        adapt_monitor = group.clients[j].adapt_T3A(test_data=inference_data)
-                        logger.logging(
-                            f'Client {j} Corupt {corupt} level {level}: New Test Acc {adapt_monitor["test_acc"]}, Model Predict Acc {adapt_monitor["test_acc_out"]}'
-                        )
-                    elif args.other.method == 'pl':
-                        adapt_monitor = group.clients[j].adapt_PL(test_data=inference_data)
-                    elif args.other.method == 'adanpc':
-                        adapt_monitor = group.clients[j].adapt_AdaNPC(test_data=inference_data)
-                    elif args.other.method == 'shot':
-                        adapt_monitor = group.clients[j].adapt_SHOT(test_data=inference_data)
-                    elif args.other.method == 'fed':
-                        test_mean, test_var, adapt_monitor = group.clients[j].adapt_fed(test_data=inference_data)
-                        global_mean.append(test_mean)
-                        global_var.append(test_var)
-                    elif args.other.method == 'sup':
-                        adapt_monitor = group.clients[j].adapt_sup(test_data=inference_data)
-                    elif args.other.method == 'bn':
-                        test_mean, test_var, adapt_monitor = group.clients[j].adapt_BN(test_data=inference_data)
-                        global_mean.append(test_mean)
-                        global_var.append(test_var)
+                    global_feature_indicator.append(feature_indicator)
 
-                    # if args.other.method != 'fed':
+                    #  Client Test Along with Adaptation
+                    if args.other.method == 'bn':
+                        test_mean, adapt_monitor = group.clients[j].adapt(test_data=inference_data)
+                        global_mean.append(test_mean)
+                    else:
+                        adapt_monitor = group.clients[j].adapt(test_data=inference_data)
                     adapt_monitor_list[cidx].append(adapt_monitor)
-                    if args.other.method != 't3a':
-                        logger.logging(
-                            f'Client {j} Corupt {corupt} level {level}: New Test Acc {adapt_monitor["test_acc"]}, New Test Loss {adapt_monitor["test_loss"]}'
-                        )
-
-                    test_times+=1
-                    old_cor_type = corupt
 
                 # Aggregate parameters in each client.
                 if args.other.is_average:
                     logger.logging('-' * 10 + ' Average ' + '-' * 10)
-                    if args.other.method == 'fed':
-                        group.aggregate_bn(i, global_mean, global_var)
+                    if args.other.method == 'bn':
+                        group.aggregate_bn(i, global_mean, global_feature_indicator)
                     else:
-                        trans_cost = group.aggregate(i)
+                        group.aggregate_grad(i, global_feature_indicator)
 
-                # if args.other.method == 'fed' or args.other.method == 'fedbm':
                 for j in tqdm.tqdm(participated_clients):
-                    if args.other.method == 'cotta':
-                        adapt_monitor = group.clients[j].inference_cotta(ap=args.cotta.AP)
-                    else:
-                        adapt_monitor = group.clients[j].inference_fed()
+                    # adapt_monitor = group.clients[j].adapt()
+                    adapt_monitor = group.clients[j].inference()
                     fed_adapt_monitor_list[cidx].append(adapt_monitor)
 
-                # if args.other.method == 'fed' or args.other.method == 'fedbm':
                 logger.logging(
                     f'Coruption Type {corupt}, level {level}, Old Test Acc {adapt_monitor_list[cidx].variable_mean()["test_acc"]}\n,'
                     f'Fed Adapt Test Acc {fed_adapt_monitor_list[cidx].variable_mean()["test_acc"]}'
                 )
 
     # Print & Save the outcome
-    data_record = np.array([[0. for _ in range(len(args.data.corruption))] for _ in range(2)])
+    data_record = np.array([[0. for _ in range(len(args.data.corruption))] for _ in range(3)])
     for cidx in range(len(args.data.corruption)):
         corupt = args.data.corruption[cidx]
         # Origin
@@ -309,21 +330,18 @@ def FedTTA_Pipeline(args: dict, seed: int = 0) -> None:
         logger.logging(
             f'Corruption Type {corupt}, level {args.data.level}: Old Test Acc {mean_test_variables["test_acc"]}, Old Test Loss {mean_test_variables["test_loss"]}')
 
-        if args.other.method == 'fed':
-            mean_train_variables = fed_adapt_monitor_list[cidx].variable_mean()
-        else:
-            mean_train_variables = adapt_monitor_list[cidx].variable_mean()
-        data_record[1][cidx] = mean_train_variables["test_acc"]
+        mean_adapt_variables = adapt_monitor_list[cidx].variable_mean()
+        data_record[1][cidx] = mean_adapt_variables["test_acc"]
+        logger.logging(
+            f'Corruption Type {corupt}, level {args.data.level}: Adapt Acc {mean_adapt_variables["test_acc"]}, Adapt Loss {mean_adapt_variables["test_loss"]}')
 
-        if args.other.method == 't3a':
-            logger.logging(
-                f'Corruption Type {corupt}, level {args.data.level}: New Test Acc {mean_train_variables["test_acc"]}')
-        else:
-            logger.logging(
-                f'Corruption Type {corupt}, level {args.data.level}: New Test Acc {mean_train_variables["test_acc"]}, New Test Loss {mean_train_variables["test_loss"]}')
+        mean_fed_variables = fed_adapt_monitor_list[cidx].variable_mean()
+        data_record[2][cidx] = mean_fed_variables["test_acc"]
+        logger.logging(
+            f'Corruption Type {corupt}, level {args.data.level}: Fed Acc {mean_fed_variables["test_acc"]}, Fed Loss {mean_fed_variables["test_loss"]}')
 
     dfData = {
-        '序号': ['Before', 'Adapt'],
+        '序号': ['Before', 'Adapt', 'Fed'],
     }
 
     for cidx in range(len(args.data.corruption)):
@@ -333,12 +351,3 @@ def FedTTA_Pipeline(args: dict, seed: int = 0) -> None:
     df.to_excel(os.path.join(args.other.logging_path, 'outcome.xlsx'), index=False)
 
 
-def generate_random_samples(client_num, corupt_num, corupt=True):
-    arr = np.empty((client_num, corupt_num), dtype=int)
-    if corupt:
-        for i in range(client_num):
-            arr[i] = np.random.permutation(corupt_num)
-    else:
-        for i in range(client_num):
-            arr[i] = np.array([i for i in range(corupt_num)])
-    return arr
