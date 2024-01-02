@@ -143,6 +143,7 @@ class FedSHOTClient(ClientTemplate):
         self.model.requires_grad_(False)
 
         criterion = nn.CrossEntropyLoss()
+
         monitor = VariableMonitor()
 
         for _, data in enumerate(self.adapt_loader):
