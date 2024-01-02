@@ -14,66 +14,6 @@ import torch.nn.functional as F
 from sklearn.cluster import KMeans
 from fling.model.stattention import ST_block
 from fling.component.group import ParameterServerGroup
-from sklearn.manifold import TSNE
-
-@torch.no_grad()
-def sknopp(cZ, lamd=25, max_iters=100):
-    N_samples, N_centroids = cZ.shape # cZ is [N_samples, N_centroids]
-    probs = F.softmax(cZ * lamd, dim=1).T # probs should be [N_centroids, N_samples]
-
-    r = torch.ones((N_centroids, 1), device=probs.device) / N_centroids # desired row sum vector
-    c = torch.ones((N_samples, 1), device=probs.device) / N_samples # desired col sum vector
-
-    inv_N_centroids = 1. / N_centroids
-    inv_N_samples = 1. / N_samples
-
-    err = 1e3
-    for it in range(max_iters):
-        r = inv_N_centroids / (probs @ c)  # (N_centroids x N_samples) @ (N_samples, 1) = N_centroids x 1
-        c_new = inv_N_samples / (r.T @ probs).T  # ((1, N_centroids) @ (N_centroids x N_samples)).t() = N_samples x 1
-        if it % 10 == 0:
-            err = torch.nansum(torch.abs(c / c_new - 1))
-        c = c_new
-        if (err < 1e-2):
-            break
-
-    # inplace calculations.
-    probs *= c.squeeze()
-    probs = probs.T # [N_samples, N_centroids]
-    probs *= r.squeeze()
-
-    return probs * N_samples # Soft assignments
-
-
-def local_clustering(features, cluster_num):
-    with torch.no_grad():
-        Z = features
-        centroids = Z[np.random.choice(Z.shape[0], cluster_num, replace=False)]
-        local_iters = 5
-        # clustering
-        for it in range(local_iters):
-            assigns = sknopp(Z @ centroids.T, max_iters=10)
-            choice_cluster = torch.argmax(assigns, dim=1)
-            for index in range(cluster_num):
-                selected = torch.nonzero(choice_cluster == index).squeeze()
-                selected = torch.index_select(Z, 0, selected)
-                if selected.shape[0] == 0:
-                    selected = Z[torch.randint(len(Z), (1,))]
-                centroids[index] = F.normalize(selected.mean(dim=0), dim=0)
-            if it != 0:
-                print(f"local cluster loss:{F.mse_loss(centroids, last_centroids)}")
-            last_centroids = centroids.clone()
-
-    feature_bank = torch.cat([features, centroids], dim=0)
-    feature_bank = feature_bank.detach().cpu().numpy()
-    tsne = TSNE(n_components=2, perplexity=30, n_iter=300, random_state=42)
-    embeded_data = tsne.fit_transform(feature_bank)
-    plt.scatter(embeded_data[:20, 0], embeded_data[:20, 1], s=5)
-    plt.scatter(embeded_data[20:-10, 0], embeded_data[20:-10, 1], s=5)
-    plt.scatter(embeded_data[-10:, 0], embeded_data[-10:, 1], s=10, marker='p')
-    plt.title('Cluster')
-    plt.show()
-    return choice_cluster, centroids
 
 @GROUP_REGISTRY.register('adapt_group')
 class TTAServerGroup(ParameterServerGroup):
@@ -88,7 +28,7 @@ class TTAServerGroup(ParameterServerGroup):
             Implementation of the group in FedTTA
         """
         super(TTAServerGroup, self).__init__(args, logger)
-        self.history_feature = [[] for _ in range(args.client.client_num)]
+        self.history_feature = []
         self.history_weight = [[] for _ in range(args.client.client_num)]
         self.indicator = torch.tensor([])
         self.time_slide = 10
@@ -198,19 +138,20 @@ class TTAServerGroup(ParameterServerGroup):
         softmax_values = torch.softmax(topk_values, dim=0)
         return softmax_values, topk_indices
 
-    def st_agg_grad(self, time_att, space_att):
+    def st_agg_grad(self, time_att, space_att, wotime=False):
         client_num = self.args.client.client_num
         time_att = torch.mean(time_att, dim=1)
         weight_list = []
         for cidx in range(client_num):
             w_time = copy.deepcopy(self.clients[cidx].model.state_dict())
-            T_all = time_att.shape[2]
-            for k in w_time.keys():
-                for tidx in range(T_all):
-                    if tidx == 0:
-                        w_time[k] = time_att[cidx, -1, tidx] * self.history_weight[cidx][-T_all + tidx][k].cuda()
-                    else:
-                        w_time[k] += time_att[cidx, -1, tidx] * self.history_weight[cidx][-T_all + tidx][k].cuda()
+            if not wotime:
+                T_all = time_att.shape[2]
+                for k in w_time.keys():
+                    for tidx in range(T_all):
+                        if tidx == 0:
+                            w_time[k] = time_att[cidx, -1, tidx] * self.history_weight[cidx][-T_all + tidx][k].cuda()
+                        else:
+                            w_time[k] += time_att[cidx, -1, tidx] * self.history_weight[cidx][-T_all + tidx][k].cuda()
             weight_list.append(w_time)
 
         for cidx in range(client_num):
@@ -254,23 +195,26 @@ class TTAServerGroup(ParameterServerGroup):
 
         elif self.args.group.aggregation_method == 'wotime':
             time_att, space_att = self.ST_attention(feature_indicator, wotime=True)
-            self.st_agg_grad(time_att, space_att)
+            self.st_agg_grad(time_att, space_att, wotime=True)
 
-    def st_agg_bn(self, time_att, space_att, global_mean):
+    def st_agg_bn(self, time_att, space_att, global_mean, wotime=False):
         n_chosen_layer = len(global_mean[0])
         client_num = self.args.client.client_num
         sum_mean = [[[] for _ in range(n_chosen_layer)] for _ in range(client_num)]
         sum_var = [[[] for _ in range(n_chosen_layer)] for _ in range(client_num)]
         for chosen_layer in range(n_chosen_layer):
             if self.history_feature[0].shape[1] < self.time_slide:
-                feature_input = self.history_feature[chosen_layer][:, 1:, :]
+                feature_input = self.history_feature[chosen_layer][:, :, :]
             else:
                 T_all = self.history_feature[chosen_layer].shape[1]
                 feature_input = self.history_feature[chosen_layer][:, T_all - self.time_slide:, :]
             N, T, D = feature_input.shape
             heads = 1
-            out = torch.matmul(time_att, feature_input.view(N, T, heads, D).permute(0, 2, 1, 3)).permute(0, 2, 1, 3).contiguous().view(N, T, heads * D)
-            out = torch.matmul(space_att, out.view(N, T, heads, D).permute(1, 2, 0, 3)).permute(1, 2, 0, 3).contiguous().view(N, T, heads * D)
+            if not wotime:
+                out = torch.matmul(time_att, feature_input.view(N, T, heads, D).permute(0, 2, 1, 3)).permute(0, 2, 1, 3).contiguous().view(N, T, heads * D)
+                out = torch.matmul(space_att, out.view(N, T, heads, D).permute(1, 2, 0, 3)).permute(1, 2, 0, 3).contiguous().view(N, T, heads * D)
+            else:
+                out = torch.matmul(space_att, feature_input.view(N, T, heads, D).permute(1, 2, 0, 3)).permute(1, 2, 0, 3).contiguous().view(N, T, heads * D)
 
             half = out.shape[2] // 2
             for cidx in range(client_num):
@@ -282,12 +226,21 @@ class TTAServerGroup(ParameterServerGroup):
         # Store feature mean and variance
         n_chosen_layer = len(global_mean[0])
         client_num = self.args.client.client_num
-        for chosen_layer in range(n_chosen_layer):
-            feature_t = []
-            for cidx in range(client_num):
-                feature_t.append(global_mean[cidx][chosen_layer])
-            feature_t = torch.stack(feature_t, dim=0)
-            self.history_feature[chosen_layer] = torch.cat([self.history_feature[chosen_layer], feature_t.unsqueeze(1)], dim=1)
+        if len(self.history_feature) == 0:
+            self.history_feature = [[] for _ in range(n_chosen_layer)]
+            for chosen_layer in range(n_chosen_layer):
+                feature_t = []
+                for cidx in range(client_num):
+                    feature_t.append(global_mean[cidx][chosen_layer])
+                feature_t = torch.stack(feature_t, dim=0)
+                self.history_feature[chosen_layer] = feature_t.unsqueeze(1)
+        else:
+            for chosen_layer in range(n_chosen_layer):
+                feature_t = []
+                for cidx in range(client_num):
+                    feature_t.append(global_mean[cidx][chosen_layer])
+                feature_t = torch.stack(feature_t, dim=0)
+                self.history_feature[chosen_layer] = torch.cat([self.history_feature[chosen_layer], feature_t.unsqueeze(1)], dim=1)
 
         # calculate aggregation rate & aggregate model weight
         sum_mean = [[[] for _ in range(n_chosen_layer)] for _ in range(client_num)]
@@ -301,11 +254,20 @@ class TTAServerGroup(ParameterServerGroup):
             for chosen_layer in range(len(global_mean[0])):
                 half = len(global_mean[0][chosen_layer]) // 2
                 for idx in range(len(global_mean)):
-                    sum_mean[chosen_layer] += global_mean[idx][chosen_layer][:half] * self.clients[idx].sample_num
-                    sum_var[chosen_layer] += global_mean[idx][chosen_layer][half:] * self.clients[idx].sample_num
-
-                sum_mean[chosen_layer] /= total_samples
-                sum_var[chosen_layer] /= total_samples
+                    if idx == 0:
+                        sum_mean[0][chosen_layer] = global_mean[idx][chosen_layer][:half] * self.clients[idx].sample_num
+                        sum_var[0][chosen_layer] = global_mean[idx][chosen_layer][half:] * self.clients[idx].sample_num
+                    else:
+                        sum_mean[0][chosen_layer] += global_mean[idx][chosen_layer][:half] * self.clients[idx].sample_num
+                        sum_var[0][chosen_layer] += global_mean[idx][chosen_layer][half:] * self.clients[idx].sample_num
+            for idx in range(len(global_mean)):
+                for chosen_layer in range(n_chosen_layer):
+                    if idx == 0:
+                        sum_mean[idx][chosen_layer] /= total_samples
+                        sum_var[idx][chosen_layer] /= total_samples
+                    else:
+                        sum_mean[idx][chosen_layer] = sum_mean[0][chosen_layer]
+                        sum_var[idx][chosen_layer] = sum_var[0][chosen_layer]
 
         elif self.args.group.aggregation_method == 'sim':
             time_att, space_att = self.ST_similarity(feature_indicator)
@@ -313,7 +275,7 @@ class TTAServerGroup(ParameterServerGroup):
         
         elif self.args.group.aggregation_method == 'wotime':
             time_att, space_att = self.ST_attention(feature_indicator, wotime=True)
-            sum_mean, sum_var = self.st_agg_bn(time_att, space_att, global_mean)
+            sum_mean, sum_var = self.st_agg_bn(time_att, space_att, global_mean, wotime=True)
 
         for cidx in range(client_num):
             self.clients[cidx].update_bnstatistics(sum_mean[cidx], sum_var[cidx])
@@ -367,11 +329,14 @@ class TTAServerGroup(ParameterServerGroup):
 
     def ST_similarity(self, feature_indicator):
         feature_indicator = torch.stack(feature_indicator, dim=0)
-        self.indicator = torch.cat([self.indicator, feature_indicator.unsqueeze(1)], dim=1)
+        if self.indicator.shape[0] == 0:
+            self.indicator = feature_indicator.unsqueeze(1)
+        else:
+            self.indicator = torch.cat([self.indicator, feature_indicator.unsqueeze(1)], dim=1)
 
         self.time_slide = 10
         if self.indicator.shape[1] < self.time_slide:
-            feature_input = self.indicator[:, 1:, :]
+            feature_input = self.indicator[:, :, :]
         else:
             feature_input = self.indicator[:, self.indicator.shape[1] - self.time_slide:, :]
         ST_model = ST_block(dim=feature_input.shape[2])

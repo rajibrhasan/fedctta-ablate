@@ -74,7 +74,7 @@ class FedSHOTClient(ClientTemplate):
         self.model.to('cpu')
         return mean_monitor_variables, feature_indicator
 
-    def adapt(self, test_data, device=None, ap=0.72, mt=0.999, rst=0.01):
+    def adapt(self, test_data, device=None, ):
         if device is not None:
             device_bak = self.device
             self.device = device

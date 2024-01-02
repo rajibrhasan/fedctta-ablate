@@ -151,17 +151,6 @@ def init_tta_state(args, net, ckpt, logger, corrupt_dict, corrupt_test_sets, ori
         group.clients[i].init_weight(ckpt=ckpt)
     group.initialize()
 
-    # initial
-    if args.other.method == 'bn':
-        clean_mean, clean_var = [], []
-        for nm, m in net.named_modules():
-            if isinstance(m, nn.BatchNorm2d):
-                clean_mean.append(m.running_mean)
-                clean_var.append(m.running_var)
-        group.init_bnstatistics(clean_mean, clean_var)
-        feature_mean = init_train_feature(args, net, trainloader)
-        group.init_featuremean(feature_mean)
-
     return group
 def init_train_feature(args, net, trainloader):
     feature_bank = []

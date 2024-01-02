@@ -17,9 +17,9 @@ exp_args = dict(
         input_channel=3,
         class_number=10,
     ),
-    client=dict(name='fedcotta_client', client_num=20),
+    client=dict(name='fedtta_client', client_num=20),
     server=dict(name='base_server'),
-    group=dict(name='adapt_group', aggregation_method='st',
+    group=dict(name='adapt_group', aggregation_method='wotime',
                aggregation_parameters=dict(
                    name='all',
 
@@ -30,11 +30,11 @@ exp_args = dict(
                adap_iter=1,
                ttt_batch=10,
 
-               is_continue=True,
-               niid=True,
+               is_continue=False,
+               niid=False,
 
                is_average=True,
-               method='cotta',
+               method='bn',
                pre_trained='resnet8',
                resume=True,
                ),
