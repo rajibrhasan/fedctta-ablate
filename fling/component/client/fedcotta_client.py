@@ -153,6 +153,13 @@ class FedCoTTAClient(ClientTemplate):
             else:
                 m.requires_grad_(True)
 
+        self.model_past = copy.deepcopy(self.model)
+        self.model_past.cuda()
+        flatten_model_past = []
+        for param in self.model_past.parameters():
+            flatten_model_past.append(param.reshape(-1))
+        flatten_model_past = torch.cat(flatten_model_past)
+
         self.transform = self.get_tta_transforms()
 
         self.model.train()
@@ -181,11 +188,19 @@ class FedCoTTAClient(ClientTemplate):
                     outputs_ema = standard_ema
                 # Student update
                 y_pred = torch.argmax(outputs_ema, dim=-1)
-                # if self.args.other.loss == 'sup':
-                #     loss = criterion(outputs, batch_y)
-                # else:
-                #     loss = criterion(outputs, y_pred)
                 loss = (self.softmax_entropy_cotta(outputs, outputs_ema)).mean(0)
+
+                if self.args.group.name == 'fedamp_group':
+                    for param_p, param in zip(self.model_past.parameters(), self.model.parameters()):
+                        loss += (1.0 / 2) * torch.norm((param - param_p) ** 2)
+                elif self.args.group.name == 'fedgraph_group':
+                    flatten_model = []
+                    for param in self.model.parameters():
+                        flatten_model.append(param.reshape(-1))
+                    flatten_model = torch.cat(flatten_model)
+                    loss2 = torch.nn.functional.cosine_similarity(flatten_model.unsqueeze(0), flatten_model_past.unsqueeze(0))
+                    loss2.backward()
+
                 loss.backward()
                 self.optimizer.step()
                 # Teacher update

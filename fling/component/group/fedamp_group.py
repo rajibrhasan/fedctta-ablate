@@ -10,15 +10,15 @@ from fling.component.group import ParameterServerGroup
 import numpy as np
 import cvxpy as cp
 
-@GROUP_REGISTRY.register('fedgraph_group')
-class FedGraphServerGroup(ParameterServerGroup):
+@GROUP_REGISTRY.register('fedamp_group')
+class FedAMPServerGroup(ParameterServerGroup):
     r"""
     Overview:
         Implementation of the group in FedCAC.
     """
 
     def __init__(self, args: dict, logger: Logger):
-        super(FedGraphServerGroup, self).__init__(args, logger)
+        super(FedAMPServerGroup, self).__init__(args, logger)
         # To be consistent with the existing pipeline interface. group maintains an epoch counter itself.
         self.epoch = -1
         self.client_num = self.args.client.client_num
@@ -42,7 +42,7 @@ class FedGraphServerGroup(ParameterServerGroup):
         params = torch.cat(params)
         return params
 
-    def cal_model_cosine_difference(self, ckpt, similarity_matric):
+    def cal_model_cosine_difference(self, ckpt):
         model_similarity_matrix = torch.zeros((self.client_num, self.client_num))
         for i in range(self.client_num):
             self.dw.append({key: torch.zeros_like(value) for key, value in self.clients[0].model.named_parameters()})
@@ -53,55 +53,36 @@ class FedGraphServerGroup(ParameterServerGroup):
 
         for i in range(self.client_num):
             for j in range(i, self.client_num):
-                if similarity_matric == "all":
-                    diff = - torch.nn.functional.cosine_similarity(
-                        self.weight_flatten_all(self.dw[i]).unsqueeze(0),
-                        self.weight_flatten_all(self.dw[j]).unsqueeze(0))
-                    if diff < - 0.9:
-                        diff = - 1.0
-                    model_similarity_matrix[i, j] = diff
-                    model_similarity_matrix[j, i] = diff
-                elif similarity_matric == "fc":
-                    diff = - torch.nn.functional.cosine_similarity(self.weight_flatten(self.dw[i]).unsqueeze(0),
-                                                                   self.weight_flatten(self.dw[j]).unsqueeze(0))
-                    if diff < - 0.9:
-                        diff = - 1.0
-                    model_similarity_matrix[i, j] = diff
-
+                if i == j:
+                    similarity = 0
+                else:
+                    similarity = torch.norm((self.weight_flatten_all(self.dw[i]).unsqueeze(0)-
+                                             self.weight_flatten_all(self.dw[j]).unsqueeze(0)), p=2)
+                model_similarity_matrix[i, j] = similarity
+                model_similarity_matrix[j, i] = similarity
         return model_similarity_matrix
 
-    def update_graph_matrix_neighbor(self, ckpt, similarity_matric, lamba=0.8):
+    def update_graph_matrix_neighbor(self, ckpt):
+        model_difference_matrix = self.cal_model_cosine_difference(ckpt)
+        graph_matrix = self.calculate_graph_matrix(model_difference_matrix)
+        print(f'Model difference: {model_difference_matrix[0]}')
+        print(f'Graph matrix: {graph_matrix}')
+        return graph_matrix
 
-        model_difference_matrix = self.cal_model_cosine_difference(ckpt, similarity_matric)
-
-        total_data_points = sum([self.clients[k].sample_num for k in range(self.client_num)])
-        fed_avg_freqs = {k: self.clients[k].sample_num / total_data_points for k in range(self.client_num)}
-
-        n = model_difference_matrix.shape[0]
-        p = np.array(list(fed_avg_freqs.values()))
-        P = lamba * np.identity(n)
-        P = cp.atoms.affine.wraps.psd_wrap(P)
-        G = - np.identity(n)
-        h = np.zeros(n)
-        A = np.ones((1, n))
-        b = np.ones(1)
+    def calculate_graph_matrix(self, model_difference_matrix):
+        graph_matrix = torch.zeros((model_difference_matrix.shape[0], model_difference_matrix.shape[0]))
+        self_weight = 0.3
         for i in range(model_difference_matrix.shape[0]):
-            model_difference_vector = model_difference_matrix[i]
-            d = model_difference_vector.numpy()
-            q = d - 2 * lamba * p
-            x = cp.Variable(n)
-            prob = cp.Problem(cp.Minimize(cp.quad_form(x, P) + q.T @ x),
-                              [G @ x <= h,
-                               A @ x == b]
-                              )
-            prob.solve()
+            weight = torch.exp(-model_difference_matrix[i])
+            weight[i] = 0
+            weight = (1 - self_weight) * weight / weight.sum()
+            weight[i] = self_weight
+            graph_matrix[i] = weight
 
-            self.graph_matrix[i, :] = torch.Tensor(x.value)
-
-        return self.graph_matrix
+        return graph_matrix
 
     def aggregate_grad(self,  train_round, feature_indicator):
-        self.graph_matrix = self.update_graph_matrix_neighbor(self.server.glob_dict, similarity_matric='all')
+        self.graph_matrix = self.update_graph_matrix_neighbor(self.server.glob_dict)
 
         tmp_client_state_dict = {}
         for cidx in range(self.client_num):

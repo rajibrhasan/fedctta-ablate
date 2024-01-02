@@ -91,53 +91,6 @@ class TTAServerGroup(ParameterServerGroup):
             'Parameter number in each model: {:.2f}M'.format(get_params_number(self.clients[0].model) / 1e6)
         )
 
-    def append(self, client: ClientTemplate) -> None:
-        r"""
-        Overview:
-            Append a client into the group.
-        Arguments:
-            - client: client to be added.
-        Returns:
-            - None
-        """
-        self.clients.append(client)
-
-
-    def aggregate_fedbm(self):
-        total_samples = sum([client.sample_num for client in self.clients])
-        # Weighted-averaging.
-        self.server.glob_dict = {
-            k: reduce(
-                lambda x, y: x + y,
-                [client.model.state_dict()[k] for client in self.clients]
-            )
-            for k in self.clients[0].fed_keys
-        }
-        self.sync()
-
-    def aggregate(self, train_round: int) -> int:
-        r"""
-        Overview:
-            Aggregate all client models.
-        Arguments:
-            - train_round: current global epochs.
-        Returns:
-            - trans_cost: uplink communication cost.
-        """
-        if self.args.group.aggregation_method == 'avg':
-            trans_cost = fed_avg(self.clients, self.server)
-            self.sync()
-        else:
-            print('Unrecognized compression method: ' + self.args.group.aggregation_method)
-            assert False
-        return trans_cost
-
-    def topk_softmax(self, weight, k, num):
-        topk_values, topk_indices = torch.topk(weight, num)
-        topk_values = weight[topk_indices]
-        softmax_values = torch.softmax(topk_values, dim=0)
-        return softmax_values, topk_indices
-
     def st_agg_grad(self, time_att, space_att, wotime=False):
         client_num = self.args.client.client_num
         time_att = torch.mean(time_att, dim=1)
@@ -168,7 +121,6 @@ class TTAServerGroup(ParameterServerGroup):
                         w_space[k] += space_att[cidx, sidx] * weight_list[sidx][k]
 
             self.clients[cidx].model.load_state_dict(w_space)
-
 
     def aggregate_grad(self, train_round, feature_indicator):
         client_num = self.args.client.client_num

@@ -90,6 +90,13 @@ class FedTentClient(ClientTemplate):
         self.model.to(self.device)
         self.sample_num = len(test_data)
 
+        self.model_past = copy.deepcopy(self.model)
+        self.model_past.cuda()
+        flatten_model_past = []
+        for param in self.model_past.parameters():
+            flatten_model_past.append(param.reshape(-1))
+        flatten_model_past = torch.cat(flatten_model_past)
+
         # Turn on model grads. collect_params
         self.model.requires_grad_(False)
         params, names = [], []
@@ -117,6 +124,18 @@ class FedTentClient(ClientTemplate):
                 y_pred = torch.argmax(out, dim=-1)
 
                 loss = self.softmax_entropy(out).mean(0)
+
+                if self.args.group.name == 'fedamp_group':
+                    for param_p, param in zip(self.model_past.parameters(), self.model.parameters()):
+                        loss += (1.0 / 2) * torch.norm((param - param_p) ** 2)
+                elif self.args.group.name == 'fedgraph_group':
+                    flatten_model = []
+                    for param in self.model.parameters():
+                        flatten_model.append(param.reshape(-1))
+                    flatten_model = torch.cat(flatten_model)
+                    loss2 = torch.nn.functional.cosine_similarity(flatten_model.unsqueeze(0), flatten_model_past.unsqueeze(0))
+                    loss2.backward()
+
                 monitor.append(
                     {
                         'test_acc': torch.mean((y_pred == preprocessed_data['y']).float()).item(),
