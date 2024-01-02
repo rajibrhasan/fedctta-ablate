@@ -135,7 +135,6 @@ class ST_block(nn.Module):
         self.SA1 = SpatialAttention(dim=dim, heads=Sheads)
         # self.TA2 = TempoAttention(dim=dim, heads=Theads)
 
-
     def forward(self, x, wotime=False):
         if wotime:
             x1, x_agg, t_sim_A = self.TA1(x) # x: after message passing between sequential batches, x_agg: mean which can indicate this area, t_sim_A: [ cidx ][ heads ][ T ]
@@ -148,17 +147,18 @@ class ST_block(nn.Module):
             return repr0, repr1, repr2, t_sim_A, s_sim_A
         else:
             x1, x_agg, t_sim_A = self.TA1(x)  # x: after message passing between sequential batches, x_agg: mean which can indicate this area, t_sim_A: [ cidx ][ heads ][ T ]
-            _, graph = graphStructual(x_agg)
+            # _, graph = graphStructual(x1[:, -1, :])
+            _, graph = graphStructual(x[:, -1, :])
             repr1, repr0, s_sim_A = self.SA1(x1, attention_mask=(graph == 0))
 
             time_mask = aug_temporal(t_sim_A)
-            # space_mask = aug_spatiol(s_sim_A, graph)
+            space_mask = aug_spatiol(s_sim_A, graph)
             x2, _, _ = self.TA1(x, attention_mask=(time_mask == 0))
-            repr2, _, _ = self.SA1(x2, attention_mask=(graph == 0))
+            repr2, _, _ = self.SA1(x2, attention_mask=(space_mask == 0))
 
             return repr0, repr1, repr2, t_sim_A, s_sim_A
 
-def aug_temporal(t_sim_A, percent=0.95):
+def aug_temporal(t_sim_A, percent=0.75):
     N, heads, T, T = t_sim_A.shape
     mask_prob = (1. - t_sim_A).cpu().numpy()
 

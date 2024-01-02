@@ -107,12 +107,11 @@ class FedPLClient(ClientTemplate):
         self.model.to('cpu')
         return mean_monitor_variables
 
-    def inference(self, classifier=None, device=None, ap=0.72, mt=0.99, rst=0.1):
+    def inference(self, classifier=None, device=None):
         if device is not None:
+            device_bak = self.device
             self.device = device
         self.model.to(self.device)
-        if self.args.other.is_average:
-            self.model_ema = self.update_ema_variables(ema_model=self.model_ema, model=self.model, alpha_teacher=mt)
 
         self.model.eval()
         self.model.requires_grad_(False)
@@ -120,38 +119,20 @@ class FedPLClient(ClientTemplate):
         criterion = nn.CrossEntropyLoss()
         monitor = VariableMonitor()
 
-        with torch.no_grad():
-            for _, data in enumerate(self.adapt_loader):
-                preprocessed_data = self.preprocess_data(data)
-                batch_x, batch_y = preprocessed_data['x'], preprocessed_data['y']
+        for _, data in enumerate(self.adapt_loader):
+            preprocessed_data = self.preprocess_data(data)
+            batch_x, batch_y = preprocessed_data['x'], preprocessed_data['y']
+            outputs = self.model(batch_x)
 
-                outputs = self.model(batch_x)
-
-                # Teacher Prediction
-                anchor_prob = torch.nn.functional.softmax(self.model_anchor(batch_x), dim=1).max(1)[0]
-                standard_ema = self.model_ema(batch_x)
-                # Augmentation-averaged Prediction
-                N = 32
-                outputs_emas = []
-                for i in range(N):
-                    outputs_ = self.model_ema(self.transform(batch_x)).detach()
-                    outputs_emas.append(outputs_)
-                # # Threshold choice discussed in supplementary
-                if anchor_prob.mean(0) < ap:
-                    outputs_ema = torch.stack(outputs_emas).mean(0)
-                else:
-                    outputs_ema = standard_ema
-                # Student update
-                y_pred = torch.argmax(outputs_ema, dim=-1)
-                # y_pred = torch.argmax(outputs, dim=-1)
-                loss = criterion(outputs, batch_y)
-                monitor.append(
-                    {
-                        'test_acc': torch.mean((y_pred == preprocessed_data['y']).float()).item(),
-                        'test_loss': loss.item()
-                    },
-                    weight=preprocessed_data['y'].shape[0]
-                )
+            y_pred = torch.argmax(outputs, dim=-1)
+            loss = criterion(outputs, batch_y)
+            monitor.append(
+                {
+                    'test_acc': torch.mean((y_pred == preprocessed_data['y']).float()).item(),
+                    'test_loss': loss.item()
+                },
+                weight=preprocessed_data['y'].shape[0]
+            )
 
         mean_monitor_variables = monitor.variable_mean()
         self.model.to('cpu')

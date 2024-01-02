@@ -19,12 +19,12 @@ exp_args = dict(
     ),
     client=dict(name='fedtta_client', client_num=20),
     server=dict(name='base_server'),
-    group=dict(name='adapt_group', aggregation_method='wotime',
+    group=dict(name='adapt_group', aggregation_method='st',
                aggregation_parameters=dict(
                    name='all',
 
                )),
-    other=dict(test_freq=3, logging_path='./logging/1228_cifar10_resnet_STiid_cotta_st',
+    other=dict(test_freq=3, logging_path='./logging/0102_cifar10_resnet_STniid_bn_st',
                model_path='./pretrain/resnet8_cifar10.ckpt',
                online=True,
                adap_iter=1,

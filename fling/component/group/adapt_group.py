@@ -152,6 +152,9 @@ class TTAServerGroup(ParameterServerGroup):
                             w_time[k] = time_att[cidx, -1, tidx] * self.history_weight[cidx][-T_all + tidx][k].cuda()
                         else:
                             w_time[k] += time_att[cidx, -1, tidx] * self.history_weight[cidx][-T_all + tidx][k].cuda()
+            else:
+                for k in w_time.keys():
+                    w_time[k] = w_time[k].cuda()
             weight_list.append(w_time)
 
         for cidx in range(client_num):
@@ -302,7 +305,7 @@ class TTAServerGroup(ParameterServerGroup):
         ST_model.cuda()
         opt = torch.optim.Adam(ST_model.parameters(), lr=1e-3)
         loss_min = 1000000
-        for epoch in range(100):
+        for epoch in range(50):
             print('Epoch {}'.format(epoch))
             ST_model.train()
             logits, mask_logits, aug_logits, t_sim, s_sim = ST_model(feature_input, wotime=wotime)
