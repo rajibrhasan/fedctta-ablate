@@ -70,9 +70,47 @@ class FedGraphServerGroup(ParameterServerGroup):
 
         return model_similarity_matrix
 
-    def update_graph_matrix_neighbor(self, ckpt, similarity_matric, lamba=0.8):
+    # def update_graph_matrix_neighbor(self, ckpt, similarity_matric, lamba=0.8):
+    #
+    #     model_difference_matrix = self.cal_model_cosine_difference(ckpt, similarity_matric)
+    #
+    #     total_data_points = sum([self.clients[k].sample_num for k in range(self.client_num)])
+    #     fed_avg_freqs = {k: self.clients[k].sample_num / total_data_points for k in range(self.client_num)}
+    #
+    #     n = model_difference_matrix.shape[0]
+    #     p = np.array(list(fed_avg_freqs.values()))
+    #     P = lamba * np.identity(n)
+    #     P = cp.atoms.affine.wraps.psd_wrap(P)
+    #     G = - np.identity(n)
+    #     h = np.zeros(n)
+    #     A = np.ones((1, n))
+    #     b = np.ones(1)
+    #     for i in range(model_difference_matrix.shape[0]):
+    #         model_difference_vector = model_difference_matrix[i]
+    #         d = model_difference_vector.numpy()
+    #         q = d - 2 * lamba * p
+    #         x = cp.Variable(n)
+    #         prob = cp.Problem(cp.Minimize(cp.quad_form(x, P) + q.T @ x),
+    #                           [G @ x <= h,
+    #                            A @ x == b]
+    #                           )
+    #         prob.solve()
+    #
+    #         self.graph_matrix[i, :] = torch.Tensor(x.value)
+    #
+    #     return self.graph_matrix
+    def update_graph_matrix_neighbor(self, feature_indicator, lamba=0.8):
 
-        model_difference_matrix = self.cal_model_cosine_difference(ckpt, similarity_matric)
+        model_difference_matrix = torch.zeros((self.client_num, self.client_num))
+
+        for i in range(self.client_num):
+            for j in range(i, self.client_num):
+                diff = - torch.nn.functional.cosine_similarity(feature_indicator[i].unsqueeze(0),
+                                                               feature_indicator[j].unsqueeze(0))
+                if diff < - 0.9:
+                    diff = - 1.0
+                model_difference_matrix[i, j] = diff
+                model_difference_matrix[j, i] = diff
 
         total_data_points = sum([self.clients[k].sample_num for k in range(self.client_num)])
         fed_avg_freqs = {k: self.clients[k].sample_num / total_data_points for k in range(self.client_num)}
@@ -97,11 +135,12 @@ class FedGraphServerGroup(ParameterServerGroup):
             prob.solve()
 
             self.graph_matrix[i, :] = torch.Tensor(x.value)
-
+        print(self.graph_matrix)
         return self.graph_matrix
 
     def aggregate_grad(self,  train_round, feature_indicator):
-        self.graph_matrix = self.update_graph_matrix_neighbor(self.server.glob_dict, similarity_matric='all')
+        # self.graph_matrix = self.update_graph_matrix_neighbor(self.server.glob_dict, similarity_matric='all')
+        self.graph_matrix = self.update_graph_matrix_neighbor(feature_indicator)
 
         tmp_client_state_dict = {}
         for cidx in range(self.client_num):

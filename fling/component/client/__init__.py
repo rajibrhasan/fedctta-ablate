@@ -13,3 +13,4 @@ from .fedcotta_client import FedCoTTAClient
 from .fedpl_client import FedPLClient
 from .fedshot_client import FedSHOTClient
 from .fedactmad_client import FedActMADClient
+from .fedthe_client import FedTHEClient

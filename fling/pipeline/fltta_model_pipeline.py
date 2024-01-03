@@ -151,7 +151,13 @@ def init_tta_state(args, net, ckpt, logger, corrupt_dict, corrupt_test_sets, ori
         group.clients[i].init_weight(ckpt=ckpt)
     group.initialize()
 
+    if args.client.name == 'fedthe_client':
+        global_rep = init_train_feature(args, net, trainloader)
+        for i in range(args.client.client_num):
+            group.clients[i].init_globalrep(global_rep)
+
     return group
+
 def init_train_feature(args, net, trainloader):
     feature_bank = []
     with torch.no_grad():
@@ -300,8 +306,10 @@ def FedTTA_Pipeline(args: dict, seed: int = 0) -> None:
                         group.aggregate_grad(i, global_feature_indicator)
 
                 for j in tqdm.tqdm(participated_clients):
-                    # adapt_monitor = group.clients[j].adapt()
-                    adapt_monitor = group.clients[j].inference()
+                    if 'ft' in args.other.method:
+                        adapt_monitor = group.clients[j].adapt(test_data=inference_data)
+                    else:
+                        adapt_monitor = group.clients[j].inference()
                     fed_adapt_monitor_list[cidx].append(adapt_monitor)
 
                 logger.logging(

@@ -26,7 +26,6 @@ class FedAMPServerGroup(ParameterServerGroup):
         self.graph_matrix[range(self.client_num), range(self.client_num)] = 0
         self.dw = []
 
-
     def weight_flatten(self, model):
         params = []
         for k in model:
@@ -62,12 +61,12 @@ class FedAMPServerGroup(ParameterServerGroup):
                 model_similarity_matrix[j, i] = similarity
         return model_similarity_matrix
 
-    def update_graph_matrix_neighbor(self, ckpt):
-        model_difference_matrix = self.cal_model_cosine_difference(ckpt)
-        graph_matrix = self.calculate_graph_matrix(model_difference_matrix)
-        print(f'Model difference: {model_difference_matrix[0]}')
-        print(f'Graph matrix: {graph_matrix}')
-        return graph_matrix
+    # def update_graph_matrix_neighbor(self, ckpt):
+    #     model_difference_matrix = self.cal_model_cosine_difference(ckpt)
+    #     graph_matrix = self.calculate_graph_matrix(model_difference_matrix)
+    #     print(f'Model difference: {model_difference_matrix[0]}')
+    #     print(f'Graph matrix: {graph_matrix}')
+    #     return graph_matrix
 
     def calculate_graph_matrix(self, model_difference_matrix):
         graph_matrix = torch.zeros((model_difference_matrix.shape[0], model_difference_matrix.shape[0]))
@@ -81,9 +80,26 @@ class FedAMPServerGroup(ParameterServerGroup):
 
         return graph_matrix
 
-    def aggregate_grad(self,  train_round, feature_indicator):
-        self.graph_matrix = self.update_graph_matrix_neighbor(self.server.glob_dict)
+    def update_graph_matrix_neighbor(self, feature_indicator):
+        model_similarity_matrix = torch.zeros((self.client_num, self.client_num))
+        for i in range(self.client_num):
+            for j in range(i, self.client_num):
+                if i == j:
+                    similarity = 0
+                else:
+                    similarity = torch.norm((feature_indicator[i].unsqueeze(0) -
+                                             feature_indicator[j].unsqueeze(0)), p=2)
+                model_similarity_matrix[i, j] = similarity
+                model_similarity_matrix[j, i] = similarity
 
+        graph_matrix = self.calculate_graph_matrix(model_similarity_matrix)
+        print(f'Model difference: {model_similarity_matrix[0]}')
+        print(f'Graph matrix: {graph_matrix}')
+        return graph_matrix
+
+    def aggregate_grad(self,  train_round, feature_indicator):
+        # self.graph_matrix = self.update_graph_matrix_neighbor(self.server.glob_dict)
+        self.graph_matrix = self.update_graph_matrix_neighbor(feature_indicator)
         tmp_client_state_dict = {}
         for cidx in range(self.client_num):
             tmp_client_state_dict[cidx] = copy.deepcopy(self.server.glob_dict)
