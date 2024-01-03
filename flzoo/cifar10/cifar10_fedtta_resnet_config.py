@@ -19,7 +19,7 @@ exp_args = dict(
     ),
     client=dict(name='fedpl_client', client_num=20),
     server=dict(name='base_server'),
-    group=dict(name='fedamp_group', aggregation_method='st',
+    group=dict(name='cfl_group', aggregation_method='st',
                aggregation_parameters=dict(
                    name='all',
 
@@ -34,7 +34,7 @@ exp_args = dict(
                niid=True,
 
                is_average=True,
-               method='cotta',
+               method='pl',
                pre_trained='resnet8',
                resume=True,
                ),
