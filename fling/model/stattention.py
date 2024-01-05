@@ -127,10 +127,10 @@ class SpatialAttention(nn.Module):
         return out, out_raw, raw_att[-1, 0, :, :].clone().detach()
 
 class ST_block(nn.Module):
-    def __init__(self, dim, Theads=1, Sheads=1, proj_bias=False, proj_dropout=.0):
+    def __init__(self, args, dim, Theads=1, Sheads=1, proj_bias=False, proj_dropout=.0):
         super().__init__()
         self.dim = dim
-
+        self.args = args
         self.TA1 = TempoAttention(dim=dim, heads=Theads)
         self.SA1 = SpatialAttention(dim=dim, heads=Sheads)
         # self.TA2 = TempoAttention(dim=dim, heads=Theads)
@@ -148,13 +148,36 @@ class ST_block(nn.Module):
         else:
             x1, x_agg, t_sim_A = self.TA1(x)  # x: after message passing between sequential batches, x_agg: mean which can indicate this area, t_sim_A: [ cidx ][ heads ][ T ]
             # _, graph = graphStructual(x1[:, -1, :])
-            _, graph = graphStructual(x[:, -1, :])
-            repr1, repr0, s_sim_A = self.SA1(x1, attention_mask=(graph == 0))
+            if self.args.other.st == 'independent':
+                _, graph = graphStructual(x[:, -1, :])
+                repr1, repr0, s_sim_A = self.SA1(x, attention_mask=(graph == 0))
 
-            time_mask = aug_temporal(t_sim_A)
-            space_mask = aug_spatiol(s_sim_A, graph)
-            x2, _, _ = self.TA1(x, attention_mask=(time_mask == 0))
-            repr2, _, _ = self.SA1(x2, attention_mask=(space_mask == 0))
+                space_mask = aug_spatiol(s_sim_A, graph)
+                repr2, _, _ = self.SA1(x, attention_mask=(space_mask == 0))
+
+            elif self.args.other.st == 'graph':
+                _, graph = graphStructual(x1[:, -1, :])
+                repr1, repr0, s_sim_A = self.SA1(x, attention_mask=(graph == 0))
+
+                space_mask = aug_spatiol(s_sim_A, graph)
+                repr2, _, _ = self.SA1(x, attention_mask=(space_mask == 0))
+
+            elif self.args.other.st == 'seq':
+                _, graph = graphStructual(x[:, -1, :])
+                repr1, repr0, s_sim_A = self.SA1(x1, attention_mask=(graph == 0))
+                time_mask = aug_temporal(t_sim_A)
+                space_mask = aug_spatiol(s_sim_A, graph)
+                x2, _, _ = self.TA1(x, attention_mask=(time_mask == 0))
+                repr2, _, _ = self.SA1(x2, attention_mask=(space_mask == 0))
+
+            else:
+                _, graph = graphStructual(x1[:, -1, :])
+                repr1, repr0, s_sim_A = self.SA1(x1, attention_mask=(graph == 0))
+
+                time_mask = aug_temporal(t_sim_A)
+                space_mask = aug_spatiol(s_sim_A, graph)
+                x2, _, _ = self.TA1(x, attention_mask=(time_mask == 0))
+                repr2, _, _ = self.SA1(x2, attention_mask=(space_mask == 0))
 
             return repr0, repr1, repr2, t_sim_A, s_sim_A
 

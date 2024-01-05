@@ -200,6 +200,10 @@ class FedCoTTAClient(ClientTemplate):
                     flatten_model = torch.cat(flatten_model)
                     loss2 = torch.nn.functional.cosine_similarity(flatten_model.unsqueeze(0), flatten_model_past.unsqueeze(0))
                     loss2.backward()
+                elif 'fedprox' in self.args.other.method:
+                    lambda_1 = 0.01
+                    for param_p, param in zip(self.model_past.parameters(), self.model.parameters()):
+                        loss += ((lambda_1 / 2) * torch.norm((param - param_p)) ** 2)
 
                 loss.backward()
                 self.optimizer.step()

@@ -309,6 +309,7 @@ def FedTTA_Pipeline(args: dict, seed: int = 0) -> None:
                     if 'ft' in args.other.method:
                         adapt_monitor = group.clients[j].adapt(test_data=inference_data)
                     else:
+
                         adapt_monitor = group.clients[j].inference()
                     fed_adapt_monitor_list[cidx].append(adapt_monitor)
 

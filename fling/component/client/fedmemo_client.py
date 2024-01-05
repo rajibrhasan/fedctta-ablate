@@ -10,14 +10,32 @@ from fling.model import get_model
 from fling.utils.utils import VariableMonitor
 
 import torchvision.transforms as transforms
+from fling.dataset.aug_data import aug
 import fling.component.client.my_transformers as my_transforms
 import PIL
 
-@CLIENT_REGISTRY.register('fedpl_client')
-class FedPLClient(ClientTemplate):
+def get_normalization(data_name):
+    if "cifar10" in data_name:
+        normalize = transforms.Normalize((0.4914, 0.4822, 0.4465), (0.247, 0.243, 0.261))
+        unnormalize = transforms.Compose([transforms.Normalize(mean=[0., 0., 0.], std=[1/0.247, 1/0.243, 1/0.261]),
+                                          transforms.Normalize(mean=[-0.4914, -0.4822, -0.4465], std=[1., 1., 1.])])
+        return normalize, unnormalize
+    elif "cifar100" in data_name:
+        normalize = transforms.Normalize((0.5071, 0.4867, 0.4408), (0.2675, 0.2565, 0.2761))
+        unnormalize = transforms.Compose([transforms.Normalize(mean=[0., 0., 0.], std=[1/0.2675, 1/0.2565, 1/0.2761]),
+                                          transforms.Normalize(mean=[-0.5071, -0.4867, -0.4408], std=[1., 1., 1.])])
+        return normalize, unnormalize
+    elif "imagenet" in data_name:
+        normalize = transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5))
+        unnormalize = transforms.Compose([transforms.Normalize(mean=[0., 0., 0.], std=[1/0.5, 1/0.5, 1/0.5]),
+                                          transforms.Normalize(mean=[-0.5, -0.5, -0.5], std=[1., 1., 1.])])
+        return normalize, unnormalize
+
+@CLIENT_REGISTRY.register('fedmemo_client')
+class FedMEMOClient(ClientTemplate):
 
     def __init__(self, args: dict, client_id: int, train_dataset: Iterable = None, test_dataset: Iterable = None):
-        super(FedPLClient, self).__init__(args, client_id, train_dataset, test_dataset)
+        super(FedMEMOClient, self).__init__(args, client_id, train_dataset, test_dataset)
         self.args = args
         self.client_id = client_id
         self.class_number = args.data.class_number
@@ -72,6 +90,13 @@ class FedPLClient(ClientTemplate):
         self.model.to('cpu')
         return mean_monitor_variables, feature_indicator
 
+    def marginal_entropy(self, outputs):
+        logits = outputs - outputs.logsumexp(dim=-1, keepdim=True)
+        avg_logits = logits.logsumexp(dim=0) - np.log(logits.shape[0])
+        min_real = torch.finfo(avg_logits.dtype).min
+        avg_logits = torch.clamp(avg_logits, min=min_real)
+        return -(avg_logits * torch.exp(avg_logits)).sum(dim=-1), avg_logits
+
     def adapt(self, test_data, device=None, ap=0.72, mt=0.999, rst=0.01):
         if device is not None:
             device_bak = self.device
@@ -86,59 +111,28 @@ class FedPLClient(ClientTemplate):
             flatten_model_past.append(param.reshape(-1))
         flatten_model_past = torch.cat(flatten_model_past)
 
-        criterion = nn.CrossEntropyLoss()
         self.model.train()
+        # turn on model grads.
+        self.model.requires_grad_(True)
+
+        # do the unnormalize to ensure consistency.
+        normalize, unnormalize = get_normalization(self.args.data.dataset)
+        convert_img = transforms.Compose([unnormalize, transforms.ToPILImage()])
+        model_param = copy.deepcopy(self.model.state_dict())
         monitor = VariableMonitor()
-        if self.args.other.method == 'ditto':
-            self.local_model = copy.deepcopy(self.model)
-            self.local_model.to(self.device)
-            self.local_model.requires_grad_(True)
-            self.local_model.train()
-            optimizer = torch.optim.Adam(self.model.parameters(), lr=self.args.learn.optimizer.lr, betas=(0.9, 0.999), weight_decay=0.)
-            poptimizer = torch.optim.Adam(self.local_model.parameters(), lr=self.args.learn.optimizer.lr, betas=(0.9, 0.999), weight_decay=0.)
-
-            lamda = 1.
-            num_epochs = 1
-            for _ in range(num_epochs):
-                for _, data in enumerate(self.adapt_loader):
-                    poptimizer.zero_grad()
-                    preprocessed_data = self.preprocess_data(data)
-                    batch_x, batch_y = preprocessed_data['x'], preprocessed_data['y']
-                    outputs = self.local_model(batch_x)
-                    y_pred = torch.argmax(outputs, dim=-1)
-                    loss = criterion(outputs, y_pred)
-                    for param_p, param in zip(self.local_model.parameters(), self.model.parameters()):
-                        loss += ((lamda / 2) * torch.norm((param - param_p)) ** 2)
-                    monitor.append(
-                        {
-                            'test_acc': torch.mean((y_pred == preprocessed_data['y']).float()).item(),
-                            'test_loss': loss.item()
-                        },
-                        weight=preprocessed_data['y'].shape[0]
-                    )
-                    loss.backward()
-                    poptimizer.step()
-
-            for _ in range(num_epochs):
-                for _, data in enumerate(self.adapt_loader):
-                    optimizer.zero_grad()
-                    preprocessed_data = self.preprocess_data(data)
-                    batch_x, batch_y = preprocessed_data['x'], preprocessed_data['y']
-                    outputs = self.local_model(batch_x)
-                    y_pred = torch.argmax(outputs, dim=-1)
-                    loss = criterion(outputs, y_pred)
-                    loss.backward()
-                    optimizer.step()
-        else:
-            for eps in range(1):
-                for _, data in enumerate(self.adapt_loader):
+        num_steps = 1
+        for _, data in enumerate(self.adapt_loader):
+            preprocessed_data = self.preprocess_data(data)
+            batch_x, batch_y = preprocessed_data['x'], preprocessed_data['y']
+            for i in range(batch_x.shape[0]):
+                image = convert_img(batch_x[i])
+                for _ in range(num_steps):
+                    # generate a batch of augmentations and minimize prediction entropy.
+                    inputs = [aug(image, normalize) for _ in range(16)]
+                    inputs = torch.stack(inputs).cuda()
                     self.optimizer.zero_grad()
-
-                    preprocessed_data = self.preprocess_data(data)
-                    batch_x, batch_y = preprocessed_data['x'], preprocessed_data['y']
-                    outputs = self.model(batch_x)
-                    y_pred = torch.argmax(outputs, dim=-1)
-                    loss = criterion(outputs, y_pred)
+                    outputs = self.model(inputs)
+                    loss, avg_outputs = self.marginal_entropy(outputs)
 
                     if self.args.group.name == 'fedamp_group':
                         for param_p, param in zip(self.model_past.parameters(), self.model.parameters()):
@@ -157,13 +151,14 @@ class FedPLClient(ClientTemplate):
 
                     loss.backward()
                     self.optimizer.step()
+                    y_pred = torch.argmax(avg_outputs, dim=-1)
 
                     monitor.append(
                         {
-                            'test_acc': torch.mean((y_pred == preprocessed_data['y']).float()).item(),
+                            'test_acc': torch.mean((y_pred == batch_y).float()).item(),
                             'test_loss': loss.item()
                         },
-                        weight=preprocessed_data['y'].shape[0]
+                        weight=batch_y.shape[0]
                     )
 
         mean_monitor_variables = monitor.variable_mean()

@@ -97,19 +97,20 @@ class TTAServerGroup(ParameterServerGroup):
         weight_list = []
         for cidx in range(client_num):
             w_time = copy.deepcopy(self.clients[cidx].model.state_dict())
-            if not wotime:
-                T_all = time_att.shape[2]
-                for k in w_time.keys():
-                    for tidx in range(T_all):
-                        if tidx == 0:
-                            w_time[k] = time_att[cidx, -1, tidx] * self.history_weight[cidx][-T_all + tidx][k].cuda()
-                        else:
-                            w_time[k] += time_att[cidx, -1, tidx] * self.history_weight[cidx][-T_all + tidx][k].cuda()
-            else:
-                for k in w_time.keys():
-                    w_time[k] = w_time[k].cuda()
+            # if not wotime:
+            #     T_all = time_att.shape[2]
+            #     for k in w_time.keys():
+            #         for tidx in range(T_all):
+            #             if tidx == 0:
+            #                 w_time[k] = time_att[cidx, -1, tidx] * self.history_weight[cidx][-T_all + tidx][k].cuda()
+            #             else:
+            #                 w_time[k] += time_att[cidx, -1, tidx] * self.history_weight[cidx][-T_all + tidx][k].cuda()
+            # else:
+            for k in w_time.keys():
+                w_time[k] = w_time[k].cuda()
             weight_list.append(w_time)
 
+        print(space_att)
         for cidx in range(client_num):
             w_space = copy.deepcopy(self.clients[cidx].model.state_dict())
             S_all = space_att.shape[0]
@@ -124,8 +125,8 @@ class TTAServerGroup(ParameterServerGroup):
 
     def aggregate_grad(self, train_round, feature_indicator):
         client_num = self.args.client.client_num
-        for cidx in range(client_num):
-            self.history_weight[cidx].append(self.clients[cidx].model.state_dict())
+        # for cidx in range(client_num):
+        #     self.history_weight[cidx].append(self.clients[cidx].model.state_dict())
 
         if self.args.group.aggregation_method == 'st':
             time_att, space_att = self.ST_attention(feature_indicator)
@@ -253,11 +254,11 @@ class TTAServerGroup(ParameterServerGroup):
             feature_input = self.indicator[:, :, :]
         else:
             feature_input = self.indicator[:, self.indicator.shape[1]-self.time_slide:, :]
-        ST_model = ST_block(dim=feature_input.shape[2])
+        ST_model = ST_block(args=self.args, dim=feature_input.shape[2])
         ST_model.cuda()
-        opt = torch.optim.Adam(ST_model.parameters(), lr=1e-3)
+        opt = torch.optim.Adam(ST_model.parameters(), lr=5e-4)
         loss_min = 1000000
-        for epoch in range(50):
+        for epoch in range(100):
             print('Epoch {}'.format(epoch))
             ST_model.train()
             logits, mask_logits, aug_logits, t_sim, s_sim = ST_model(feature_input, wotime=wotime)
@@ -279,7 +280,7 @@ class TTAServerGroup(ParameterServerGroup):
             print('loss = {:.4f} + {:.4f} + {:.4f} = {:.4f}(min {:.4f})'.format(loss_reg.item(), loss_consist.item(),
                                                                                 loss_robust.item(), loss.item(),
                                                                                 loss_min))
-
+        torch.cuda.empty_cache()
         return time_att, space_att
 
     def ST_similarity(self, feature_indicator):
@@ -294,7 +295,7 @@ class TTAServerGroup(ParameterServerGroup):
             feature_input = self.indicator[:, :, :]
         else:
             feature_input = self.indicator[:, self.indicator.shape[1] - self.time_slide:, :]
-        ST_model = ST_block(dim=feature_input.shape[2])
+        ST_model = ST_block(args=self.args, dim=feature_input.shape[2])
         ST_model.cuda()
         logits, mask_logits, aug_logits, t_sim, s_sim = ST_model(feature_input)
 
