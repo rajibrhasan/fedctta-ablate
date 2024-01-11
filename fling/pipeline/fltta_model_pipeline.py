@@ -18,104 +18,13 @@ from torch.utils.data import DataLoader
 from fling.utils.data_utils.sampling import NaiveDataset
 
 import pandas as pd
+from fling.utils.utils import VariableMonitor, SaveEmb
 
-
-def non_iid_continual(is_niid, client_number, corupt_number):
+def non_iid_continual(args, is_niid, client_number, corupt_number):
     if not is_niid:
         corupt_map = np.array([[i for i in range(corupt_number)] for _ in range(client_number)])
     else:
-        # corupt_map = np.array([[-1, ] * corupt_number] * client_number)
-        # for j in range(client_number):
-        #     for i in range(corupt_number):
-        #         temp = random.randint(0, corupt_number - 1)
-        #         while temp in corupt_map[j]:
-        #             temp = (temp + 1) % corupt_number
-        #         corupt_map[j][i] = temp
-        corupt_map = np.array([
-            [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14],
-            [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14],
-            [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14],
-            [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14],
-            [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14],
-            [4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 0, 1, 2, 3],
-            [4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 0, 1, 2, 3],
-            [4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 0, 1, 2, 3],
-            [4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 0, 1, 2, 3],
-            [4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 0, 1, 2, 3],
-            [8, 9, 10, 11, 12, 13, 14, 0, 1, 2, 3, 4, 5, 6, 7],
-            [8, 9, 10, 11, 12, 13, 14, 0, 1, 2, 3, 4, 5, 6, 7],
-            [8, 9, 10, 11, 12, 13, 14, 0, 1, 2, 3, 4, 5, 6, 7],
-            [8, 9, 10, 11, 12, 13, 14, 0, 1, 2, 3, 4, 5, 6, 7],
-            [8, 9, 10, 11, 12, 13, 14, 0, 1, 2, 3, 4, 5, 6, 7],
-            [12, 13, 14, 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11],
-            [12, 13, 14, 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11],
-            [12, 13, 14, 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11],
-            [12, 13, 14, 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11],
-            [12, 13, 14, 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11],
-
-            [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14],
-            [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14],
-            [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14],
-            [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14],
-            [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14],
-            [4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 0, 1, 2, 3],
-            [4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 0, 1, 2, 3],
-            [4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 0, 1, 2, 3],
-            [4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 0, 1, 2, 3],
-            [4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 0, 1, 2, 3],
-            [8, 9, 10, 11, 12, 13, 14, 0, 1, 2, 3, 4, 5, 6, 7],
-            [8, 9, 10, 11, 12, 13, 14, 0, 1, 2, 3, 4, 5, 6, 7],
-            [8, 9, 10, 11, 12, 13, 14, 0, 1, 2, 3, 4, 5, 6, 7],
-            [8, 9, 10, 11, 12, 13, 14, 0, 1, 2, 3, 4, 5, 6, 7],
-            [8, 9, 10, 11, 12, 13, 14, 0, 1, 2, 3, 4, 5, 6, 7],
-            [12, 13, 14, 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11],
-            [12, 13, 14, 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11],
-            [12, 13, 14, 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11],
-            [12, 13, 14, 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11],
-            [12, 13, 14, 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11],
-
-            [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14],
-            [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14],
-            [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14],
-            [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14],
-            [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14],
-            [4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 0, 1, 2, 3],
-            [4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 0, 1, 2, 3],
-            [4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 0, 1, 2, 3],
-            [4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 0, 1, 2, 3],
-            [4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 0, 1, 2, 3],
-            [8, 9, 10, 11, 12, 13, 14, 0, 1, 2, 3, 4, 5, 6, 7],
-            [8, 9, 10, 11, 12, 13, 14, 0, 1, 2, 3, 4, 5, 6, 7],
-            [8, 9, 10, 11, 12, 13, 14, 0, 1, 2, 3, 4, 5, 6, 7],
-            [8, 9, 10, 11, 12, 13, 14, 0, 1, 2, 3, 4, 5, 6, 7],
-            [8, 9, 10, 11, 12, 13, 14, 0, 1, 2, 3, 4, 5, 6, 7],
-            [12, 13, 14, 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11],
-            [12, 13, 14, 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11],
-            [12, 13, 14, 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11],
-            [12, 13, 14, 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11],
-            [12, 13, 14, 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11],
-
-            [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14],
-            [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14],
-            [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14],
-            [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14],
-            [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14],
-            [4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 0, 1, 2, 3],
-            [4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 0, 1, 2, 3],
-            [4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 0, 1, 2, 3],
-            [4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 0, 1, 2, 3],
-            [4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 0, 1, 2, 3],
-            [8, 9, 10, 11, 12, 13, 14, 0, 1, 2, 3, 4, 5, 6, 7],
-            [8, 9, 10, 11, 12, 13, 14, 0, 1, 2, 3, 4, 5, 6, 7],
-            [8, 9, 10, 11, 12, 13, 14, 0, 1, 2, 3, 4, 5, 6, 7],
-            [8, 9, 10, 11, 12, 13, 14, 0, 1, 2, 3, 4, 5, 6, 7],
-            [8, 9, 10, 11, 12, 13, 14, 0, 1, 2, 3, 4, 5, 6, 7],
-            [12, 13, 14, 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11],
-            [12, 13, 14, 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11],
-            [12, 13, 14, 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11],
-            [12, 13, 14, 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11],
-            [12, 13, 14, 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11],
-        ])
+        corupt_map = np.load(args.other.partition_path)
     return corupt_map
 
 def test_origin(net, test_dataloader):
@@ -155,8 +64,35 @@ def init_tta_state(args, net, ckpt, logger, corrupt_dict, corrupt_test_sets, ori
         global_rep = init_train_feature(args, net, trainloader)
         for i in range(args.client.client_num):
             group.clients[i].init_globalrep(global_rep)
+    elif args.client.name == 'fedactmad_client':
+        clean_feature_mean, clean_feature_var = init_train_bn(net, trainloader)
+        for i in range(args.client.client_num):
+            group.clients[i].update_statistics(clean_feature_mean, clean_feature_var)
 
     return group
+
+def init_train_bn(net, trainloader):
+    chosen_layers = []
+    for m in net.modules():
+        if isinstance(m, nn.BatchNorm2d):
+            chosen_layers.append(m)
+
+    n_chosen_layers = len(chosen_layers)
+    hook_list = [SaveEmb() for _ in range(n_chosen_layers)]
+    clean_feature_mean = []
+    clean_feature_var = []
+    for idx, data in enumerate(trainloader):
+        hooks = [chosen_layers[i].register_forward_hook(hook_list[i]) for i in range(n_chosen_layers)]
+        inputs = data['input'].cuda()
+        with torch.no_grad():
+            net.eval()
+            _ = net(inputs)
+            for yy in range(n_chosen_layers):
+                hook_list[yy].statistics_update(), hook_list[yy].clear(), hooks[yy].remove()
+
+    for i in range(n_chosen_layers):
+        clean_feature_mean.append(hook_list[i].pop_mean()), clean_feature_var.append(hook_list[i].pop_var())
+    return clean_feature_mean, clean_feature_var
 
 def init_train_feature(args, net, trainloader):
     feature_bank = []
@@ -253,7 +189,7 @@ def FedTTA_Pipeline(args: dict, seed: int = 0) -> None:
             # determine the corruption
             logger.logging('Starting Federated Test-Time Adaptation round: ')
 
-            corupt_map = non_iid_continual(is_niid=args.other.niid, client_number=args.client.client_num,
+            corupt_map = non_iid_continual(args=args, is_niid=args.other.niid, client_number=args.client.client_num,
                                            corupt_number=len(args.data.corruption))
             participated_clients = client_sampling(range(args.client.client_num), args.client.sample_rate)
 

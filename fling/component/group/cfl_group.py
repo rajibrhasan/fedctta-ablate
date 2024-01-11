@@ -121,7 +121,13 @@ class CFLServerGroup(ParameterServerGroup):
         return model_similarity_matrix
 
     def compute_max_update_norm(self, cluster):
-        return np.max([torch.norm(self.weight_flatten(client_dw)).item() for client_dw in cluster])
+        norm_list = []
+        for client_dw in cluster:
+            weight = self.weight_flatten_all(client_dw)
+            norm_list.append(torch.norm(weight).item())
+        norm_list = np.array(norm_list)
+        return np.max(norm_list)
+        # return np.max([torch.norm(self.weight_flatten(client_dw)).item() for client_dw in cluster])
 
     def compute_mean_update_norm(self, cluster):
         return torch.norm(torch.mean(torch.stack([self.weight_flatten(client_dw) for client_dw in cluster]), dim=0)).item()
@@ -175,6 +181,38 @@ class CFLServerGroup(ParameterServerGroup):
         print("cluster", cluster_indices)
 
         self.weight_past = [self.clients[i].model.state_dict() for i in range(self.client_num)]
+
+    def aggregate_bn(self, train_round, global_mean, feature_indicator, eps2=0.01):
+        similarity = self.cal_model_cosine_difference(self.weight_past)
+        print(similarity)
+
+        cluster_indices_new = []
+        for idc in self.cluster_indices:
+            max_norm = self.compute_max_update_norm([self.dw[i] for i in idc])
+            # mean_norm = self.compute_mean_update_norm([self.dw[i] for i in idc])
+            alpha = self.compute_max_simi(similarity, idc)
+            print(alpha, max_norm, eps2)
+            if max_norm > eps2 and len(idc) > 2 and alpha < 0.97:
+                c1, c2 = self.cluster_clients(similarity[idc][:, idc])
+                print("new split", idc, c1, c2)
+                cluster_indices_new += [idc[c1], idc[c2]]
+            else:
+                cluster_indices_new += [idc]
+
+        cluster_indices = cluster_indices_new
+        client_clusters = [[self.clients[i].model for i in idcs] for idcs in cluster_indices]
+        # gradient_clusters = [[self.dw[i] for i in idcs] for idcs in self.cluster_indices]
+        gradient_clusters = [[copy.deepcopy(self.clients[i].model.state_dict()) for i in idcs] for idcs in
+                             cluster_indices]
+        for i in range(len(cluster_indices)):
+            self.reduce_add_average(client_clusters[i], gradient_clusters[i])
+        print("cluster", cluster_indices)
+        # Store feature mean and variance
+        n_chosen_layer = len(global_mean[0])
+        client_num = self.args.client.client_num
+        # calculate aggregation rate & aggregate model weight
+        sum_mean = [[[] for _ in range(n_chosen_layer)] for _ in range(client_num)]
+        sum_var = [[[] for _ in range(n_chosen_layer)] for _ in range(client_num)]
 
 
 

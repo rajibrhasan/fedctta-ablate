@@ -204,6 +204,14 @@ class FedCoTTAClient(ClientTemplate):
                     lambda_1 = 0.01
                     for param_p, param in zip(self.model_past.parameters(), self.model.parameters()):
                         loss += ((lambda_1 / 2) * torch.norm((param - param_p)) ** 2)
+                elif self.args.group.name == 'adapt_group' and self.args.group.aggregation_method == 'st':
+                    flatten_model = []
+                    for param in self.model.parameters():
+                        flatten_model.append(param.reshape(-1))
+                    flatten_model = torch.cat(flatten_model)
+                    loss2 = torch.nn.functional.cosine_similarity(flatten_model.unsqueeze(0),
+                                                                  flatten_model_past.unsqueeze(0))
+                    loss2.backward()
 
                 loss.backward()
                 self.optimizer.step()
@@ -229,12 +237,31 @@ class FedCoTTAClient(ClientTemplate):
         self.model.to('cpu')
         return mean_monitor_variables
 
-    def inference(self, classifier=None, device=None, ap=0.72, mt=0.99, rst=0.1):
+    def inference(self, classifier=None, device=None, ap=0.72, mt=0.999, rst=0.01):
         if device is not None:
             self.device = device
         self.model.to(self.device)
-        if self.args.other.is_average:
-            self.model_ema = self.update_ema_variables(ema_model=self.model_ema, model=self.model, alpha_teacher=mt)
+        # if self.args.other.is_average:
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+        
+        #     self.model_ema = self.update_ema_variables(ema_model=self.model_ema, model=self.model, alpha_teacher=mt)
 
         self.model.eval()
         self.model.requires_grad_(False)

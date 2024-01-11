@@ -6,6 +6,7 @@ from .resnet import resnet4, resnet6, resnet8, resnet10, resnet18, resnet34, res
 from .swin_transformer import SwinTransformer
 from .vit import ViT
 from .wideresnet import WideResNet
+from .resnext import CifarResNeXt
 from .build_model import get_model
 
 # Algorithm specific models

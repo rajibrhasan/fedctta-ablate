@@ -129,40 +129,22 @@ class FedAMPServerGroup(ParameterServerGroup):
                     tmp_bn = torch.cat([tmp_bn, global_mean[cidx][n_chosen_layer]], dim=0)
             dw.append(tmp_bn)
 
-        model_difference_matrix = torch.zeros([self.client_num, self.client_num])
+        model_similarity_matrix = torch.zeros((self.client_num, self.client_num))
         for i in range(self.client_num):
             for j in range(i, self.client_num):
-                diff = - torch.nn.functional.cosine_similarity(dw[i].unsqueeze(0), dw[j].unsqueeze(0))
-                # if diff < -0.9:
-                #     diff = -1.0
-                model_difference_matrix[i, j] = diff
-                model_difference_matrix[j, i] = diff
+                if i == j:
+                    similarity = 0
+                else:
+                    similarity = torch.norm((dw[i].unsqueeze(0) -
+                                             dw[j].unsqueeze(0)), p=2)
+                model_similarity_matrix[i, j] = similarity
+                model_similarity_matrix[j, i] = similarity
 
-        total_data_points = sum([self.clients[k].sample_num for k in range(self.client_num)])
-        fed_avg_freqs = {k: self.clients[k].sample_num / total_data_points for k in range(self.client_num)}
+        graph_matrix = self.calculate_graph_matrix(model_similarity_matrix)
+        print(f'Model difference: {model_similarity_matrix[0]}')
+        print(f'Graph matrix: {graph_matrix}')
+        return graph_matrix
 
-        n = model_difference_matrix.shape[0]
-        p = np.array(list(fed_avg_freqs.values()))
-        P = lamba * np.identity(n)
-        P = cp.atoms.affine.wraps.psd_wrap(P)
-        G = - np.identity(n)
-        h = np.zeros(n)
-        A = np.ones((1, n))
-        b = np.ones(1)
-        for i in range(model_difference_matrix.shape[0]):
-            model_difference_vector = model_difference_matrix[i]
-            d = model_difference_vector.numpy()
-            q = d - 2 * lamba * p
-            x = cp.Variable(n)
-            prob = cp.Problem(cp.Minimize(cp.quad_form(x, P) + q.T @ x),
-                              [G @ x <= h,
-                               A @ x == b]
-                              )
-            prob.solve()
-
-            self.graph_matrix[i, :] = torch.Tensor(x.value)
-
-        return self.graph_matrix
 
     def aggregate_bn(self, train_round, global_mean, feature_indicator):
         self.graph_matrix = self.update_graph_matrix_neighbor_bn(global_mean, similarity_matric='all')

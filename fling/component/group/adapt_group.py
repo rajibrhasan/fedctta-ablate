@@ -249,16 +249,17 @@ class TTAServerGroup(ParameterServerGroup):
             self.indicator = torch.cat([self.indicator, feature_indicator.unsqueeze(1)], dim=1)
 
         # Get Aggregate Weights with Trainable Modules
-        self.time_slide = 10
+        self.time_slide = self.args.other.time_slide
         if self.indicator.shape[1] < self.time_slide:
             feature_input = self.indicator[:, :, :]
         else:
             feature_input = self.indicator[:, self.indicator.shape[1]-self.time_slide:, :]
         ST_model = ST_block(args=self.args, dim=feature_input.shape[2])
         ST_model.cuda()
-        opt = torch.optim.Adam(ST_model.parameters(), lr=5e-4)
+        opt = torch.optim.Adam(ST_model.parameters(), lr=self.args.other.st_lr)
         loss_min = 1000000
-        for epoch in range(100):
+        epoch_num = self.args.other.st_epoch
+        for epoch in range(epoch_num):
             print('Epoch {}'.format(epoch))
             ST_model.train()
             logits, mask_logits, aug_logits, t_sim, s_sim = ST_model(feature_input, wotime=wotime)
@@ -266,7 +267,7 @@ class TTAServerGroup(ParameterServerGroup):
             loss_consist = F.mse_loss(logits, mask_logits)
             loss_robust = F.mse_loss(logits, aug_logits)
 
-            loss = (loss_reg + loss_robust) * 100
+            loss = (loss_reg + self.args.other.robust_weight * loss_robust)
 
             if loss.item() < loss_min:
                 time_att = t_sim

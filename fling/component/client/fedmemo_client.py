@@ -11,8 +11,8 @@ from fling.utils.utils import VariableMonitor
 
 import torchvision.transforms as transforms
 from fling.dataset.aug_data import aug
-import fling.component.client.my_transformers as my_transforms
-import PIL
+import numpy as np
+
 
 def get_normalization(data_name):
     if "cifar10" in data_name:
@@ -119,20 +119,23 @@ class FedMEMOClient(ClientTemplate):
         normalize, unnormalize = get_normalization(self.args.data.dataset)
         convert_img = transforms.Compose([unnormalize, transforms.ToPILImage()])
         model_param = copy.deepcopy(self.model.state_dict())
+
         monitor = VariableMonitor()
-        num_steps = 1
+        num_steps = 2
+        correct = 0.
         for _, data in enumerate(self.adapt_loader):
             preprocessed_data = self.preprocess_data(data)
             batch_x, batch_y = preprocessed_data['x'], preprocessed_data['y']
+            batch_y_pred = []
             for i in range(batch_x.shape[0]):
                 image = convert_img(batch_x[i])
                 for _ in range(num_steps):
                     # generate a batch of augmentations and minimize prediction entropy.
-                    inputs = [aug(image, normalize) for _ in range(16)]
+                    inputs = [aug(image, normalize) for _ in range(32)]
                     inputs = torch.stack(inputs).cuda()
                     self.optimizer.zero_grad()
                     outputs = self.model(inputs)
-                    loss, avg_outputs = self.marginal_entropy(outputs)
+                    loss, _ = self.marginal_entropy(outputs)
 
                     if self.args.group.name == 'fedamp_group':
                         for param_p, param in zip(self.model_past.parameters(), self.model.parameters()):
@@ -151,15 +154,17 @@ class FedMEMOClient(ClientTemplate):
 
                     loss.backward()
                     self.optimizer.step()
-                    y_pred = torch.argmax(avg_outputs, dim=-1)
 
-                    monitor.append(
-                        {
-                            'test_acc': torch.mean((y_pred == batch_y).float()).item(),
-                            'test_loss': loss.item()
-                        },
-                        weight=batch_y.shape[0]
-                    )
+                y_pred = torch.argmax(self.model(batch_x[i]))
+                batch_y_pred.append(y_pred)
+                self.model.load_state_dict(model_param)
+            monitor.append(
+                {
+                    'test_acc': float(correct / float(batch_x.shape[0])),
+                    'test_loss': loss.item()
+                },
+                weight=batch_y.shape[0]
+            )
 
         mean_monitor_variables = monitor.variable_mean()
         self.model.to('cpu')
