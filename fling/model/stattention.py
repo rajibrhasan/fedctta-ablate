@@ -16,7 +16,6 @@ class TempoAttention(nn.Module):
 
         self.dim = dim
         self.heads = heads
-
         self.init_weights()
 
     def init_weights(self):
@@ -27,11 +26,11 @@ class TempoAttention(nn.Module):
                     init.zeros_(m.bias)
 
     def forward(self, x, attention_mask=None, attention_weights=None):
-        N, T, D = x.shape
+        N, T, D = x.shape   # X^{N T D}
 
-        q = self.fc_q(x).view(N, T, self.heads, D).permute(0, 2, 1, 3)  # (b_s, h, nq, d_k)
-        k = self.fc_k(x).view(N, T, self.heads, D).permute(0, 2, 3, 1)  # (b_s, h, d_k, nk)
-        v = self.fc_v(x).view(N, T, self.heads, D).permute(0, 2, 1, 3)  # (b_s, h, nk, d_v)
+        q = self.fc_q(x).view(N, T, self.heads, D).permute(0, 2, 1, 3)
+        k = self.fc_k(x).view(N, T, self.heads, D).permute(0, 2, 3, 1)
+        v = self.fc_v(x).view(N, T, self.heads, D).permute(0, 2, 1, 3)
 
         self.att = torch.matmul(q, k) / np.sqrt(D)  # (N, heads, T, T)
         if attention_weights is not None:
@@ -39,15 +38,10 @@ class TempoAttention(nn.Module):
         if attention_mask is not None:
             self.att = self.att.masked_fill(attention_mask, -np.inf)
         self.att = torch.softmax(self.att, -1)
-        # self.att = self.dropout(self.att)
 
         out = torch.matmul(self.att, v).permute(0, 2, 1, 3).contiguous().view(N, T, self.heads * D)  # (N, T, h*d_v)
-        # for i in range(N):
-        #     for j in range(self.heads):
-        #         for k in range(T):
-        #             out[i][k] = torch.mm(self.att[i][j][k].unsqueeze(0), v[i][j]).squeeze(0)
         out_agg = torch.mean(out, dim=1)
-        # out_agg = out[:, -1, :]
+
         return out, out_agg.detach(), self.att.detach()
 
 def graphStructual(avg_feature, sim_type='cos', threshold=0.9):
@@ -80,11 +74,7 @@ class SpatialAttention(nn.Module):
 
     def init_weights(self):
         for m in self.modules():
-            if isinstance(m, nn.Conv2d):
-                init.kaiming_normal_(m.weight, mode='fan_out')
-                if m.bias is not None:
-                    init.constant_(m.bias, 0)
-            elif isinstance(m, nn.BatchNorm2d):
+            if isinstance(m, nn.BatchNorm2d):
                 init.constant_(m.weight, 1)
                 init.constant_(m.bias, 0)
             elif isinstance(m, nn.Linear):
@@ -93,15 +83,6 @@ class SpatialAttention(nn.Module):
                     init.zeros_(m.bias)
 
     def forward(self, x, attention_mask=None, attention_weights=None):
-        '''
-        Computes
-        :param queries: Queries (b_s, nq, d_model)
-        :param keys: Keys (b_s, nk, d_model)
-        :param values: Values (b_s, nk, d_model)
-        :param attention_mask: Mask over attention values (b_s, h, nq, nk). True indicates masking.
-        :param attention_weights: Multiplicative weights for attention values (b_s, h, nq, nk).
-        :return:
-        '''
         N, T, D = x.shape
 
         q = self.geo_q(x).view(N, T, self.heads, D).permute(1, 2, 0, 3)  # (T, head, N, D)
@@ -113,14 +94,11 @@ class SpatialAttention(nn.Module):
         raw_att = torch.softmax(raw_att, dim=-1)
         out_raw = torch.matmul(raw_att, v).permute(1, 2, 0, 3).contiguous().view(N, T, self.heads * D)  # (b_s, nq, h*d_v)
 
-        # self.att = torch.matmul(q, k) / (torch.outer(torch.norm(q, p=2, dim=1), torch.norm(k.permute(0, 1, 3, 2), p=2, dim=1)))
-        # self.att = F.cosine_similarity(q, k.permute(0, 1, 3, 2), dim=3)
         if attention_weights is not None:
             self.att = self.att * attention_weights
         if attention_mask is not None:
             self.att = self.att.masked_fill(attention_mask, -np.inf)
         self.att = torch.softmax(self.att, dim=-1)
-        self.att = self.dropout(self.att)
 
         out = torch.matmul(self.att, v).permute(1, 2, 0, 3).contiguous().view(N, T, self.heads * D)  # (b_s, nq, h*d_v)
 
@@ -131,6 +109,8 @@ class ST_block(nn.Module):
         super().__init__()
         self.dim = dim
         self.args = args
+        Theads = args.other.st_head
+        Sheads = args.other.st_head
         self.TA1 = TempoAttention(dim=dim, heads=Theads)
         self.SA1 = SpatialAttention(dim=dim, heads=Sheads)
         # self.TA2 = TempoAttention(dim=dim, heads=Theads)
@@ -173,15 +153,18 @@ class ST_block(nn.Module):
             else:
                 _, graph = graphStructual(x1[:, -1, :])
                 repr1, repr0, s_sim_A = self.SA1(x1, attention_mask=(graph == 0))
-
-                time_mask = aug_temporal(t_sim_A)
-                space_mask = aug_spatiol(s_sim_A, graph)
+                if self.args.other.st == 'random':
+                    time_mask = aug_temporal(t_sim_A, random=True)
+                    space_mask = aug_spatiol(s_sim_A, graph, random=True)
+                else:
+                    time_mask = aug_temporal(t_sim_A)
+                    space_mask = aug_spatiol(s_sim_A, graph)
                 x2, _, _ = self.TA1(x, attention_mask=(time_mask == 0))
                 repr2, _, _ = self.SA1(x2, attention_mask=(space_mask == 0))
 
             return repr0, repr1, repr2, t_sim_A, s_sim_A
 
-def aug_temporal(t_sim_A, percent=0.75):
+def aug_temporal(t_sim_A, percent=0.75, random=False):
     N, heads, T, T = t_sim_A.shape
     mask_prob = (1. - t_sim_A).cpu().numpy()
 
@@ -195,16 +178,20 @@ def aug_temporal(t_sim_A, percent=0.75):
             if mask_prob[i][j].sum() == 0:
                 break
             mask_prob[i][j] /= mask_prob[i][j].sum()
-            mask_list = np.random.choice(T * T, size=mask_number, p=mask_prob[i][j].reshape(-1), replace=False)
-            time_mask[i][j][
-                x.reshape(-1)[mask_list],
-                y.reshape(-1)[mask_list]
-            ] = zeros
+            if len(mask_prob[i][j].reshape(-1)>0) > mask_number:
+                if not random:
+                    mask_list = np.random.choice(T * T, size=mask_number, p=mask_prob[i][j].reshape(-1), replace=False)
+                else:
+                    mask_list = np.random.choice(T * T, size=mask_number, replace=False)
+                time_mask[i][j][
+                    x.reshape(-1)[mask_list],
+                    y.reshape(-1)[mask_list]
+                ] = zeros
             for k in range(T):
                 time_mask[i][j][k][k] = ones
     return time_mask
 
-def aug_spatiol(sim_mx, graph, percent=0.8):
+def aug_spatiol(sim_mx, graph, percent=0.8, random=False):
     drop_percent = percent
     add_percent = 1 - percent
 
@@ -223,7 +210,10 @@ def aug_spatiol(sim_mx, graph, percent=0.8):
     drop_prob = sim_mx[edge_mask]
     drop_prob = (1. - drop_prob).cpu().numpy()  # normalized similarity to get sampling probability
     drop_prob /= drop_prob.sum()
-    drop_list = np.random.choice(edge_num, size=add_drop_num, p=drop_prob, replace=False)
+    if not random:
+        drop_list = np.random.choice(edge_num, size=add_drop_num, p=drop_prob, replace=False)
+    else:
+        drop_list = np.random.choice(edge_num, size=add_drop_num, replace=False)
     drop_index = index_list[drop_list]
 
     zeros = torch.zeros_like(aug_graph[0, 0])

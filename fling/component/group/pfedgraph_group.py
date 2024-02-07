@@ -25,6 +25,7 @@ class FedGraphServerGroup(ParameterServerGroup):
         self.graph_matrix = torch.ones(self.client_num, self.client_num) / (self.client_num - 1)  # Collaboration Graph
         self.graph_matrix[range(self.client_num), range(self.client_num)] = 0
         self.dw = []
+        self.collaboration_graph = []
 
 
     def weight_flatten(self, model):
@@ -101,7 +102,7 @@ class FedGraphServerGroup(ParameterServerGroup):
     #     return self.graph_matrix
     def update_graph_matrix_neighbor(self, feature_indicator, lamba=0.8):
 
-        model_difference_matrix = torch.zeros((self.client_num, self.client_num))
+        model_similarity_matrix = torch.zeros((self.client_num, self.client_num))
 
         for i in range(self.client_num):
             for j in range(i, self.client_num):
@@ -109,13 +110,14 @@ class FedGraphServerGroup(ParameterServerGroup):
                                                                feature_indicator[j].unsqueeze(0))
                 if diff < - 0.9:
                     diff = - 1.0
-                model_difference_matrix[i, j] = diff
-                model_difference_matrix[j, i] = diff
+                model_similarity_matrix[i, j] = diff
+                model_similarity_matrix[j, i] = diff
 
         total_data_points = sum([self.clients[k].sample_num for k in range(self.client_num)])
         fed_avg_freqs = {k: self.clients[k].sample_num / total_data_points for k in range(self.client_num)}
 
-        n = model_difference_matrix.shape[0]
+        # n = model_difference_matrix.shape[0]
+        n = model_similarity_matrix.shape[0]
         p = np.array(list(fed_avg_freqs.values()))
         P = lamba * np.identity(n)
         P = cp.atoms.affine.wraps.psd_wrap(P)
@@ -123,8 +125,8 @@ class FedGraphServerGroup(ParameterServerGroup):
         h = np.zeros(n)
         A = np.ones((1, n))
         b = np.ones(1)
-        for i in range(model_difference_matrix.shape[0]):
-            model_difference_vector = model_difference_matrix[i]
+        for i in range(model_similarity_matrix.shape[0]):
+            model_difference_vector = model_similarity_matrix[i]
             d = model_difference_vector.numpy()
             q = d - 2 * lamba * p
             x = cp.Variable(n)
@@ -141,10 +143,10 @@ class FedGraphServerGroup(ParameterServerGroup):
     def aggregate_grad(self,  train_round, feature_indicator):
         # self.graph_matrix = self.update_graph_matrix_neighbor(self.server.glob_dict, similarity_matric='all')
         self.graph_matrix = self.update_graph_matrix_neighbor(feature_indicator)
-
+        self.collaboration_graph.append(self.graph_matrix)
         tmp_client_state_dict = {}
         for cidx in range(self.client_num):
-            tmp_client_state_dict[cidx] = copy.deepcopy(self.server.glob_dict)
+            tmp_client_state_dict[cidx] = copy.deepcopy(self.clients[0].model.state_dict())
             for key in tmp_client_state_dict[cidx]:
                 tmp_client_state_dict[cidx][key] = torch.zeros_like(tmp_client_state_dict[cidx][key])
 

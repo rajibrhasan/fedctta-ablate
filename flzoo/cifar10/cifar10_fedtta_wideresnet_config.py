@@ -13,12 +13,9 @@ exp_args = dict(
         device='cuda:0', local_eps=1, global_eps=1, batch_size=200, optimizer=dict(name='sgd', lr=0.001, momentum=0.9)
     ),
     model=dict(
-        name='wide_resnet',
-        num_classes=10,
-        depth=26,
-        widen_factor=1,
+        name='cifar10_wideresnet',
     ),
-    client=dict(name='tta_client', client_num=5),
+    client=dict(name='fedtta_client', client_num=20),
     server=dict(name='base_server'),
     group=dict(name='adapt_group', aggregation_method='avg',
                aggregation_parameters=dict(
@@ -26,19 +23,33 @@ exp_args = dict(
                    keywords='block1'
                )),
     other=dict(test_freq=3, logging_path='./logging/1204_cifar10_wideresnet',
-               model_path='./pretrain/natural.pt.tar',
+               model_path='./pretrain/Wang2023Better_wrn-28-10.pt',
+               partition_path='../4area.npy',
                online=True,
                adap_iter=1,
-               ttt_batch=8,
-               is_continue=False,
-               is_average=False,
-               method='fed',
-               niid=False,
-               pre_trained='wideresnet28',
+               ttt_batch=10,
+
+               is_continue=True,
+               niid=True,
+
+               is_average=True,
+               method='bn',
+               pre_trained='resnet8',
+               resume=True,
+
+               time_slide=10,
+               st_lr=1e-4,
+               st_epoch=100,
+               robust_weight=0.5,
+               st='both',
+
+               st_head=1,
+               loop=5,
                ),
-    fed=dict(is_TA=True,
-             is_GA=True,
-             TA_topk=10000),
+
+    # fed=dict(is_TA=True,
+    #          is_GA=True,
+    #          TA_topk=10000),
 )
 
 exp_args = EasyDict(exp_args)

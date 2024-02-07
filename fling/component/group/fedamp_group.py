@@ -25,6 +25,7 @@ class FedAMPServerGroup(ParameterServerGroup):
         self.graph_matrix = torch.ones(self.client_num, self.client_num) / (self.client_num - 1)  # Collaboration Graph
         self.graph_matrix[range(self.client_num), range(self.client_num)] = 0
         self.dw = []
+        self.collaboration_graph = []
 
     def weight_flatten(self, model):
         params = []
@@ -76,6 +77,8 @@ class FedAMPServerGroup(ParameterServerGroup):
             weight[i] = 0
             weight = (1 - self_weight) * weight / weight.sum()
             weight[i] = self_weight
+            # weight = torch.exp(-model_difference_matrix[i]/5)
+            # weight = weight / weight.sum()
             graph_matrix[i] = weight
 
         return graph_matrix
@@ -87,8 +90,7 @@ class FedAMPServerGroup(ParameterServerGroup):
                 if i == j:
                     similarity = 0
                 else:
-                    similarity = torch.norm((feature_indicator[i].unsqueeze(0) -
-                                             feature_indicator[j].unsqueeze(0)), p=2)
+                    similarity = torch.norm((feature_indicator[i].unsqueeze(0) - feature_indicator[j].unsqueeze(0)), p=2)
                 model_similarity_matrix[i, j] = similarity
                 model_similarity_matrix[j, i] = similarity
 
@@ -100,9 +102,10 @@ class FedAMPServerGroup(ParameterServerGroup):
     def aggregate_grad(self,  train_round, feature_indicator):
         # self.graph_matrix = self.update_graph_matrix_neighbor(self.server.glob_dict)
         self.graph_matrix = self.update_graph_matrix_neighbor(feature_indicator)
+        self.collaboration_graph.append(self.graph_matrix)
         tmp_client_state_dict = {}
         for cidx in range(self.client_num):
-            tmp_client_state_dict[cidx] = copy.deepcopy(self.server.glob_dict)
+            tmp_client_state_dict[cidx] = copy.deepcopy(self.clients[0].model.state_dict())
             for key in tmp_client_state_dict[cidx]:
                 tmp_client_state_dict[cidx][key] = torch.zeros_like(tmp_client_state_dict[cidx][key])
 

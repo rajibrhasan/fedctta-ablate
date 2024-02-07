@@ -12,7 +12,7 @@ from functools import reduce
 import numpy as np
 import torch.nn.functional as F
 from sklearn.cluster import KMeans
-from fling.model.stattention import ST_block
+from fling.model.stattention import ST_block, SpatialAttention
 from fling.component.group import ParameterServerGroup
 
 @GROUP_REGISTRY.register('adapt_group')
@@ -32,6 +32,7 @@ class TTAServerGroup(ParameterServerGroup):
         self.history_weight = [[] for _ in range(args.client.client_num)]
         self.indicator = torch.tensor([])
         self.time_slide = 10
+        self.collaboration_graph = []
 
 
     def initialize(self) -> None:
@@ -91,9 +92,9 @@ class TTAServerGroup(ParameterServerGroup):
             'Parameter number in each model: {:.2f}M'.format(get_params_number(self.clients[0].model) / 1e6)
         )
 
-    def st_agg_grad(self, time_att, space_att, wotime=False):
+    def st_agg_grad(self, time_att=None, space_att=None, wotime=False):
         client_num = self.args.client.client_num
-        time_att = torch.mean(time_att, dim=1)
+        # time_att = torch.mean(time_att, dim=1)
         weight_list = []
         for cidx in range(client_num):
             w_time = copy.deepcopy(self.clients[cidx].model.state_dict())
@@ -153,7 +154,13 @@ class TTAServerGroup(ParameterServerGroup):
             time_att, space_att = self.ST_attention(feature_indicator, wotime=True)
             self.st_agg_grad(time_att, space_att, wotime=True)
 
-    def st_agg_bn(self, time_att, space_att, global_mean, wotime=False):
+        elif self.args.group.aggregation_method == 'base':
+            space_att = self.S_similarity(feature_indicator)
+            self.st_agg_grad(space_att=space_att, wotime=True)
+
+        self.collaboration_graph.append(space_att)
+
+    def st_agg_bn(self, time_att=None, space_att=None, global_mean=None, wotime=False):
         n_chosen_layer = len(global_mean[0])
         client_num = self.args.client.client_num
         sum_mean = [[[] for _ in range(n_chosen_layer)] for _ in range(client_num)]
@@ -169,8 +176,14 @@ class TTAServerGroup(ParameterServerGroup):
             if not wotime:
                 out = torch.matmul(time_att, feature_input.view(N, T, heads, D).permute(0, 2, 1, 3)).permute(0, 2, 1, 3).contiguous().view(N, T, heads * D)
                 out = torch.matmul(space_att, out.view(N, T, heads, D).permute(1, 2, 0, 3)).permute(1, 2, 0, 3).contiguous().view(N, T, heads * D)
+                # out = torch.matmul(time_att, feature_input.view(N, T, heads, D).permute(0, 2, 1, 3)).permute(0, 2, 1, 3).contiguous().view(N, T, heads, D)
+                # out = torch.mean(out, dim=2)
+                # out = torch.matmul(space_att, out.view(N, T, heads, D).permute(1, 2, 0, 3)).permute(1, 2, 0, 3).contiguous().view(N, T, heads, D)
+                # out = torch.mean(out, dim=2)
             else:
                 out = torch.matmul(space_att, feature_input.view(N, T, heads, D).permute(1, 2, 0, 3)).permute(1, 2, 0, 3).contiguous().view(N, T, heads * D)
+                # out = torch.matmul(space_att, feature_input.view(N, T, heads, D).permute(1, 2, 0, 3)).permute(1, 2, 0, 3).contiguous().view(N, T, heads, D)
+                # out = torch.mean(out, dim=2)
 
             half = out.shape[2] // 2
             for cidx in range(client_num):
@@ -233,6 +246,10 @@ class TTAServerGroup(ParameterServerGroup):
             time_att, space_att = self.ST_attention(feature_indicator, wotime=True)
             sum_mean, sum_var = self.st_agg_bn(time_att, space_att, global_mean, wotime=True)
 
+        elif self.args.group.aggregation_method == 'base':
+            space_att= self.S_similarity(feature_indicator)
+            sum_mean, sum_var = self.st_agg_bn(space_att=space_att, global_mean=global_mean, wotime=True)
+
         for cidx in range(client_num):
             self.clients[cidx].update_bnstatistics(sum_mean[cidx], sum_var[cidx])
 
@@ -260,7 +277,7 @@ class TTAServerGroup(ParameterServerGroup):
         loss_min = 1000000
         epoch_num = self.args.other.st_epoch
         for epoch in range(epoch_num):
-            print('Epoch {}'.format(epoch))
+            # print('Epoch {}'.format(epoch))
             ST_model.train()
             logits, mask_logits, aug_logits, t_sim, s_sim = ST_model(feature_input, wotime=wotime)
             loss_reg = F.mse_loss(feature_input, logits)
@@ -278,11 +295,71 @@ class TTAServerGroup(ParameterServerGroup):
             loss.backward()
             opt.step()
 
-            print('loss = {:.4f} + {:.4f} + {:.4f} = {:.4f}(min {:.4f})'.format(loss_reg.item(), loss_consist.item(),
-                                                                                loss_robust.item(), loss.item(),
-                                                                                loss_min))
+            # print('loss = {:.4f} + {:.4f} + {:.4f} = {:.4f}(min {:.4f})'.format(loss_reg.item(), loss_consist.item(),
+            #                                                                     loss_robust.item(), loss.item(),
+            #                                                                     loss_min))
         torch.cuda.empty_cache()
         return time_att, space_att
+
+    # def ST_attention(self, feature_indicator, wotime=False):
+    #     '''
+    #     :param feature_indicator: global_mean[ cidx ][ chosen_layer ][ D(mean) ]
+    #     :return: weight1, weight2
+    #     '''
+    #
+    #     feature_indicator = torch.stack(feature_indicator, dim=0)
+    #     if self.indicator.shape[0] == 0:
+    #         self.indicator = feature_indicator.unsqueeze(1)
+    #     else:
+    #         self.indicator = torch.cat([self.indicator, feature_indicator.unsqueeze(1)], dim=1)
+    #
+    #     # Get Aggregate Weights with Trainable Modules
+    #     self.time_slide = self.args.other.time_slide
+    #
+    #     if self.indicator.shape[1] < self.time_slide:
+    #         feature_input = self.indicator[:, :, :]
+    #     else:
+    #         feature_input = self.indicator[:, self.indicator.shape[1]-self.time_slide:, :]
+    #     ST_model = ST_block(args=self.args, dim=feature_input.shape[2])
+    #     ST_model.cuda()
+    #     opt = torch.optim.Adam(ST_model.parameters(), lr=self.args.other.st_lr)
+    #     loss_min = 1000000
+    #     epoch_num = self.args.other.st_epoch
+    #     for epoch in range(epoch_num):
+    #         index = 0
+    #         while (index+self.time_slide <= self.indicator.shape[1]) or (index == 0):
+    #             if index == 0 and (index + self.time_slide) > self.indicator.shape[1]-1:
+    #                 feature_input, label = self.indicator[:, :, :], None
+    #             elif (index + self.time_slide) > self.indicator.shape[1]-1:
+    #                 feature_input, label = self.indicator[:, self.indicator.shape[1]-self.time_slide:, :], None
+    #             else:
+    #                 feature_input, label = self.indicator[:, index:index+self.time_slide, :], self.indicator[:, index+self.time_slide, :]
+    #             index += 1
+    #             print('Epoch {}, index {}'.format(epoch, index))
+    #             ST_model.train()
+    #             logits, mask_logits, aug_logits, t_sim, s_sim = ST_model(feature_input, wotime=wotime)
+    #             loss_reg = F.mse_loss(feature_input, logits)
+    #             loss_consist = F.mse_loss(logits, mask_logits)
+    #             loss_robust = F.mse_loss(logits, aug_logits)
+    #
+    #             if label is not None:
+    #                 loss_reg += F.mse_loss(logits[:, -1, :], label)
+    #             loss = (loss_reg + self.args.other.robust_weight * loss_robust)
+    #
+    #             if loss.item() < loss_min:
+    #                 time_att = t_sim
+    #                 space_att = s_sim
+    #                 loss_min = loss.item()
+    #
+    #             opt.zero_grad()
+    #             loss.backward()
+    #             opt.step()
+    #
+    #             print('loss = {:.4f} + {:.4f} + {:.4f} = {:.4f}(min {:.4f})'.format(loss_reg.item(), loss_consist.item(),
+    #                                                                                 loss_robust.item(), loss.item(),
+    #                                                                                 loss_min))
+    #     torch.cuda.empty_cache()
+    #     return time_att, space_att
 
     def ST_similarity(self, feature_indicator):
         feature_indicator = torch.stack(feature_indicator, dim=0)
@@ -291,7 +368,7 @@ class TTAServerGroup(ParameterServerGroup):
         else:
             self.indicator = torch.cat([self.indicator, feature_indicator.unsqueeze(1)], dim=1)
 
-        self.time_slide = 10
+        self.time_slide = self.args.other.time_slide
         if self.indicator.shape[1] < self.time_slide:
             feature_input = self.indicator[:, :, :]
         else:
@@ -304,5 +381,22 @@ class TTAServerGroup(ParameterServerGroup):
         space_att = s_sim
 
         return time_att, space_att
+
+    def S_similarity(self, feature_indicator):
+        feature_indicator = torch.stack(feature_indicator, dim=0)
+        if self.indicator.shape[0] == 0:
+            self.indicator = feature_indicator.unsqueeze(1)
+        else:
+            self.indicator = torch.cat([self.indicator, feature_indicator.unsqueeze(1)], dim=1)
+        self.time_slide = self.args.other.time_slide
+        if self.indicator.shape[1] < self.time_slide:
+            feature_input = self.indicator[:, :, :]
+        else:
+            feature_input = self.indicator[:, self.indicator.shape[1] - self.time_slide:, :]
+        SA = SpatialAttention(dim=feature_input.shape[2], heads=1)
+        SA.requires_grad_(False)
+        SA.cuda()
+        logits, logits_raw, s_sim = SA(feature_input)
+        return s_sim
 
 

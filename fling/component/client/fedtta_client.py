@@ -21,6 +21,10 @@ class FedTTAClient(ClientTemplate):
         self.class_number = args.data.class_number
         self.adapt_iters = 1
         self.model = get_model(args)
+        if 'tiny' in args.data.dataset:
+            self.model.avgpool = nn.AdaptiveAvgPool2d(1)
+            num_features = self.model.fc.in_features
+            self.model.fc = nn.Linear(num_features, 200)
 
     def init_weight(self, ckpt):
         # load state dict

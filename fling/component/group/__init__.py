@@ -5,3 +5,5 @@ from .adapt_group import TTAServerGroup
 from .pfedgraph_group import FedGraphServerGroup
 from .fedamp_group import FedAMPServerGroup
 from .cfl_group import CFLServerGroup
+from .LDAWA_group import LDAWAServerGroup
+from .fedavgm_group import FedAvgMServerGroup

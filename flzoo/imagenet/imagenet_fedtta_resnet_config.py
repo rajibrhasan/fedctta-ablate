@@ -4,24 +4,27 @@ common_corruptions = ['gaussian_noise', 'shot_noise', 'impulse_noise', 'defocus_
                       'motion_blur', 'zoom_blur', 'snow', 'frost', 'fog',
                       'brightness', 'contrast', 'elastic_transform', 'pixelate', 'jpeg_compression']
 exp_args = dict(
-    data=dict(dataset='cifar100_test', data_path='./data/CIFAR100', sample_method=dict(name='iid', train_num=50000, test_num=500),
-              corruption=['gaussian_noise', 'shot_noise'],
+    data=dict(dataset='imagenet', data_path='./data/imagenet', sample_method=dict(name='iid', train_num=50000, test_num=500),
+              corruption=['gaussian_noise', 'shot_noise', 'impulse_noise', 'defocus_blur', 'glass_blur',
+                      'motion_blur', 'zoom_blur', 'snow', 'frost', 'fog',
+                      'brightness', 'contrast', 'elastic_transform', 'pixelate', 'jpeg_compression'],
               level=[5], class_number=100),
     learn=dict(
         device='cuda:0', local_eps=1, global_eps=1, batch_size=64, optimizer=dict(name='sgd', lr=0.00001, momentum=0.9)
     ),
     model=dict(
-        name='cifar100_wideresnet',
-        class_number=100,
+        name='resnet50',
+        input_channel=3,
+        class_number=1000,
     ),
-    client=dict(name='fedpl_client', client_num=20),
+    client=dict(name='fedshot_client', client_num=20),
     server=dict(name='base_server'),
-    group=dict(name='adapt_group', aggregation_method='st',
+    group=dict(name='adapt_group', aggregation_method='base',
                aggregation_parameters=dict(
                    name='all',
                )),
-    other=dict(test_freq=3, logging_path='./logging/0116_cifar100_wideresnet_local',
-               model_path='./pretrain/Diffenderfer2021Winning_LLR.pt',
+    other=dict(test_freq=3, logging_path='./logging/0105_cifar100_wideresnet_STniid_fedtta_fedamp',
+               model_path='./pretrain/Hendrycks2020AugMix_ResNeXt.pt',
                partition_path='../4area.npy',
                online=True,
                adap_iter=1,
@@ -32,14 +35,14 @@ exp_args = dict(
 
                is_average=True,
                method='adapt',
-               pre_trained='wideresnet',
+               pre_trained='cifarresnext',
                resume=True,
 
-               time_slide=5,
+               time_slide=10,
                st_lr=1e-4,
-               st_epoch=100,
+               st_epoch=50,
 
-               robust_weight=0.5,
+               robust_weight=10,
                st='both',
                st_head=1,
                ),

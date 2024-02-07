@@ -17,13 +17,13 @@ exp_args = dict(
         input_channel=3,
         class_number=10,
     ),
-    client=dict(name='fedactmad_client', client_num=20),
+    client=dict(name='fedtta_client', client_num=20),
     server=dict(name='base_server'),
-    group=dict(name='fedgraph_group', aggregation_method='st',
+    group=dict(name='adapt_group', aggregation_method='st',
                aggregation_parameters=dict(
                    name='all',
                )),
-    other=dict(test_freq=3, logging_path='./logging/0102_cifar10_resnet_STniid_fedthe_sep',
+    other=dict(test_freq=3, logging_path='./logging/0126_cifar10_resnet_loop5_seed1',
                model_path='./pretrain/resnet8_cifar10.ckpt',
                partition_path='../4area.npy',
                online=True,
@@ -34,23 +34,24 @@ exp_args = dict(
                niid=True,
 
                is_average=True,
-               method='pl',
+               method='bn',
                pre_trained='resnet8',
                resume=True,
 
                time_slide=10,
                st_lr=1e-4,
-               st_epoch=50,
-               robust_weight=10,
+               st_epoch=100,
+               robust_weight=0.5,
                 st='both',
+
+                st_head=1,
+               loop=5,
                ),
-    fed=dict(is_TA=True,
-             is_GA=True,
-             TA_topk=10000),
+
 )
 
 exp_args = EasyDict(exp_args)
 
 if __name__ == '__main__':
     from fling.pipeline import FedTTA_Pipeline
-    FedTTA_Pipeline(exp_args, seed=0)
+    FedTTA_Pipeline(exp_args, seed=1)

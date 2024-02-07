@@ -26,9 +26,9 @@ class TinyImagenetDataset(Dataset):
         self.cfg = cfg
         transform = get_data_transform(cfg.data.transforms, train=train)
         if train:
-            self.dataset = ImageFolder(os.path.join(cfg.data.data_path, 'train'), transform=transform)
+            self.dataset = ImageFolder(os.path.join(cfg.data.data_path, 'tiny-imagenet-200', 'train'), transform=transform)
         else:
-            self.dataset = ImageFolder(os.path.join(cfg.data.data_path, 'val'), transform=transform)
+            self.dataset = ImageFolder(os.path.join(cfg.data.data_path, 'tiny-imagenet-200', 'val'), transform=transform)
 
     def __len__(self) -> int:
         return len(self.dataset)

@@ -19,6 +19,7 @@ from fling.utils.data_utils.sampling import NaiveDataset
 
 import pandas as pd
 from fling.utils.utils import VariableMonitor, SaveEmb
+import pickle
 
 def non_iid_continual(args, is_niid, client_number, corupt_number):
     if not is_niid:
@@ -117,7 +118,9 @@ def FedTTA_Pipeline(args: dict, seed: int = 0) -> None:
 
     # Load origin train dataset `origin_train_set`, origin test dataset `origin_test_set`
     dataset_name = args.data.dataset
-    args.data.dataset = args.data.dataset.split('_')[0]
+    pos = args.data.dataset.rfind('_')
+    if pos != -1:
+        args.data.dataset = args.data.dataset[:pos]
     print(dataset_name, args.data.dataset)
     origin_test_set = get_dataset(args, train=False)
     origin_train_set = get_dataset(args, train=True)
@@ -159,9 +162,13 @@ def FedTTA_Pipeline(args: dict, seed: int = 0) -> None:
     # load pre-trained net
     ckpt = torch.load(args.other.model_path)
     net = get_model(args)
+    if 'tiny' in args.data.dataset:
+        net.avgpool = nn.AdaptiveAvgPool2d(1)
+        num_features = net.fc.in_features
+        net.fc = nn.Linear(num_features, 200)
     print(net)
     if args.other.pre_trained == 'wideresnet28' and args.data.class_number == 10:
-        ckpt = ckpt['state_dict']
+        # ckpt = ckpt['state_dict']
         net.load_state_dict(ckpt)
     elif args.other.pre_trained == 'wideresnet28' and args.data.class_number == 100:
         ckpt = ckpt['model_state_dict']
@@ -169,12 +176,16 @@ def FedTTA_Pipeline(args: dict, seed: int = 0) -> None:
     elif args.other.pre_trained == 'cifarresnext' and args.data.class_number == 100:
         ckpt = {key.replace("module.", ""): value for key, value in ckpt.items()}
         net.load_state_dict(ckpt)
+    elif args.other.pre_trained == 'resnet' and args.data.class_number == 100:
+        del ckpt['mu']
+        del ckpt['sigma']
+        net.load_state_dict(ckpt)
     else:
         net.load_state_dict(ckpt)
 
     net.cuda()
 
-    # test_origin(net, test_dataloader)
+    test_origin(net, test_dataloader)
 
     # Initialize group, clients and server.
     group = init_tta_state(args, net, ckpt, logger, corrupt_dict, corrupt_test_sets, origin_test_sets, train_dataloader)
@@ -184,76 +195,83 @@ def FedTTA_Pipeline(args: dict, seed: int = 0) -> None:
     adapt_monitor_list = [VariableMonitor() for _ in range(len(args.data.corruption))]
     fed_adapt_monitor_list = [VariableMonitor() for _ in range(len(args.data.corruption))]
 
+    # calculate loop
+    all_loop = int(len(corrupt_test_sets[0][args.data.corruption[0]][args.data.level[0]]) /
+                    args.other.ttt_batch)
+    avg_loop = all_loop // args.other.loop
+    last_add = all_loop % args.other.loop
+    global_eps = [avg_loop for _ in range(args.other.loop-1)] + [avg_loop+last_add]
+
     for level in args.data.level:
-        for cidx in range(len(args.data.corruption)):
-            # determine the corruption
-            logger.logging('Starting Federated Test-Time Adaptation round: ')
+        for lp in range(args.other.loop):
+            for cidx in range(len(args.data.corruption)):
+                # determine the corruption
+                logger.logging('Starting Federated Test-Time Adaptation round: ')
 
-            corupt_map = non_iid_continual(args=args, is_niid=args.other.niid, client_number=args.client.client_num,
-                                           corupt_number=len(args.data.corruption))
-            participated_clients = client_sampling(range(args.client.client_num), args.client.sample_rate)
+                corupt_map = non_iid_continual(args=args, is_niid=args.other.niid, client_number=args.client.client_num,
+                                               corupt_number=len(args.data.corruption))
+                participated_clients = client_sampling(range(args.client.client_num), args.client.sample_rate)
 
-            # Random sample participated clients in each communication round.
-            if not args.other.is_continue:
-                group = init_tta_state(args, net, ckpt, logger, corrupt_dict, corrupt_test_sets, origin_test_sets, train_dataloader)
+                # Random sample participated clients in each communication round.
+                if not args.other.is_continue:
+                    group = init_tta_state(args, net, ckpt, logger, corrupt_dict, corrupt_test_sets, origin_test_sets, train_dataloader)
 
-            global_eps = int(
-                len(corrupt_test_sets[0][args.data.corruption[corupt_map[0][cidx]]][level]) / args.other.ttt_batch)
+                for i in range(global_eps[lp]):
+                    global_feature_indicator = []
+                    global_mean = []
 
-            for i in range(global_eps):
-                global_feature_indicator = []
-                global_mean = []
+                    # Update each batch
+                    if not args.other.online:
+                        group = init_tta_state(args, net, ckpt, logger, corrupt_dict, corrupt_test_sets, origin_test_sets)
 
-                # Update each batch
-                if not args.other.online:
-                    group = init_tta_state(args, net, ckpt, logger, corrupt_dict, corrupt_test_sets, origin_test_sets)
+                    for j in tqdm.tqdm(participated_clients):
+                        # Collect test data
+                        corupt = args.data.corruption[corupt_map[j][cidx]]
 
-                for j in tqdm.tqdm(participated_clients):
-                    # Collect test data
-                    corupt = args.data.corruption[corupt_map[j][cidx]]
+                        indexs = corrupt_test_sets[j][corupt][level].indexes[0:  args.other.ttt_batch]
+                        dataset = corrupt_test_sets[j][corupt][level].tot_data
+                        corrupt_test_sets[j][corupt][level].indexes = corrupt_test_sets[j][corupt][level].indexes[args.other.ttt_batch : ]
+                        inference_data = NaiveDataset(tot_data=dataset, indexes=indexs)
 
-                    indexs = corrupt_test_sets[j][corupt][level].indexes[0:  args.other.ttt_batch]
-                    dataset = corrupt_test_sets[j][corupt][level].tot_data
-                    corrupt_test_sets[j][corupt][level].indexes = corrupt_test_sets[j][corupt][level].indexes[args.other.ttt_batch : ]
-                    inference_data = NaiveDataset(tot_data=dataset, indexes=indexs)
+                        # Test Before Adaptation
+                        test_monitor, feature_indicator = group.clients[j].test_source(test_data=inference_data)
+                        test_monitor_list[cidx].append(test_monitor)
+                        logger.logging(
+                            f'Client {j} Corupt {corupt}: Old Test Acc {test_monitor["test_acc"]}, Old Test Loss {test_monitor["test_loss"]}'
+                        )
+                        global_feature_indicator.append(feature_indicator)
 
-                    # Test Before Adaptation
-                    test_monitor, feature_indicator = group.clients[j].test_source(test_data=inference_data)
-                    test_monitor_list[cidx].append(test_monitor)
+                        #  Client Test Along with Adaptation
+                        if args.other.method == 'bn':
+                            test_mean, adapt_monitor = group.clients[j].adapt(test_data=inference_data)
+                            global_mean.append(test_mean)
+                        else:
+                            adapt_monitor = group.clients[j].adapt(test_data=inference_data)
+                        adapt_monitor_list[cidx].append(adapt_monitor)
+
+                    # Aggregate parameters in each client.
+                    if args.other.is_average:
+                        logger.logging('-' * 10 + ' Average ' + '-' * 10)
+                        if args.other.method == 'bn':
+                            group.aggregate_bn(i, global_mean, global_feature_indicator)
+                        else:
+                            group.aggregate_grad(i, global_feature_indicator)
+
+                    for j in tqdm.tqdm(participated_clients):
+                        if 'ft' in args.other.method:
+                            adapt_monitor = group.clients[j].adapt(test_data=inference_data)
+                        else:
+
+                            adapt_monitor = group.clients[j].inference()
+                        fed_adapt_monitor_list[cidx].append(adapt_monitor)
+
                     logger.logging(
-                        f'Client {j} Corupt {corupt}: Old Test Acc {test_monitor["test_acc"]}, Old Test Loss {test_monitor["test_loss"]}'
+                        f'Coruption Type {corupt}, level {level}, Old Test Acc {adapt_monitor_list[cidx].variable_mean()["test_acc"]}\n,'
+                        f'Fed Adapt Test Acc {fed_adapt_monitor_list[cidx].variable_mean()["test_acc"]}'
                     )
-                    global_feature_indicator.append(feature_indicator)
-
-                    #  Client Test Along with Adaptation
-                    if args.other.method == 'bn':
-                        test_mean, adapt_monitor = group.clients[j].adapt(test_data=inference_data)
-                        global_mean.append(test_mean)
-                    else:
-                        adapt_monitor = group.clients[j].adapt(test_data=inference_data)
-                    adapt_monitor_list[cidx].append(adapt_monitor)
-
-                # Aggregate parameters in each client.
-                if args.other.is_average:
-                    logger.logging('-' * 10 + ' Average ' + '-' * 10)
-                    if args.other.method == 'bn':
-                        group.aggregate_bn(i, global_mean, global_feature_indicator)
-                    else:
-                        group.aggregate_grad(i, global_feature_indicator)
-
-                for j in tqdm.tqdm(participated_clients):
-                    if 'ft' in args.other.method:
-                        adapt_monitor = group.clients[j].adapt(test_data=inference_data)
-                    else:
-
-                        adapt_monitor = group.clients[j].inference()
-                    fed_adapt_monitor_list[cidx].append(adapt_monitor)
-
-                logger.logging(
-                    f'Coruption Type {corupt}, level {level}, Old Test Acc {adapt_monitor_list[cidx].variable_mean()["test_acc"]}\n,'
-                    f'Fed Adapt Test Acc {fed_adapt_monitor_list[cidx].variable_mean()["test_acc"]}'
-                )
-
+    if args.group.name == 'adapt_group' or args.group.name == 'fedamp_group' or args.group.name == 'fedgraph_group':
+        with open(os.path.join(args.other.logging_path, 'collaboration.pkl'), 'wb') as f:
+            pickle.dump(group.collaboration_graph, f)
     # Print & Save the outcome
     data_record = np.array([[0. for _ in range(len(args.data.corruption))] for _ in range(3)])
     for cidx in range(len(args.data.corruption)):
@@ -277,10 +295,11 @@ def FedTTA_Pipeline(args: dict, seed: int = 0) -> None:
     dfData = {
         '序号': ['Before', 'Adapt', 'Fed'],
     }
-
+    data_record_mean = np.mean(data_record, axis=1)
     for cidx in range(len(args.data.corruption)):
         corupt = args.data.corruption[cidx]
         dfData[corupt] = data_record[:, cidx]
+    dfData['Avg'] = data_record_mean
     df = pd.DataFrame(dfData)
     df.to_excel(os.path.join(args.other.logging_path, 'outcome.xlsx'), index=False)
 

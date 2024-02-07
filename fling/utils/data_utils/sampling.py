@@ -1,3 +1,4 @@
+import random
 from copy import deepcopy
 from typing import List
 import numpy as np
@@ -43,6 +44,7 @@ def iid_sampling(dataset: Dataset, client_number: int, sample_num: int, seed: in
     dict_users, all_index = {}, [i for i in range(len(dataset))]
     for i in range(client_number):
         dict_users[i] = random_state.choice(all_index, sample_num, replace=False)
+        random_state.shuffle(dict_users[i])
 
     return [NaiveDataset(tot_data=dataset, indexes=dict_users[i]) for i in range(len(dict_users))]
 

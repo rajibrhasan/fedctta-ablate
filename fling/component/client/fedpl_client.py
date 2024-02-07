@@ -8,6 +8,7 @@ from fling.utils.registry_utils import CLIENT_REGISTRY
 from .client_template import ClientTemplate
 from fling.model import get_model
 from fling.utils.utils import VariableMonitor
+import torch.nn.functional as F
 
 import torchvision.transforms as transforms
 import fling.component.client.my_transformers as my_transforms
@@ -23,6 +24,10 @@ class FedPLClient(ClientTemplate):
         self.class_number = args.data.class_number
         self.adapt_iters = 1
         self.model = get_model(args)
+        if 'tiny' in args.data.dataset:
+            self.model.avgpool = nn.AdaptiveAvgPool2d(1)
+            num_features = self.model.fc.in_features
+            self.model.fc = nn.Linear(num_features, 200)
 
     def init_weight(self, ckpt):
         # load state dict
@@ -32,6 +37,15 @@ class FedPLClient(ClientTemplate):
 
         self.model.requires_grad_(True)
         self.optimizer = torch.optim.Adam(self.model.parameters(), lr=self.args.learn.optimizer.lr, betas=(0.9, 0.999), weight_decay=0.)
+
+        self.past_per_model = None
+
+        if self.args.other.method == 'moon':
+            self.glob_model = None
+            # The variable to store the previous models.
+            self.prev_models = []
+            # The max length of prev_models
+            self.queue_len = 1
 
     def preprocess_data(self, data):
         return {'x': data['input'].to(self.device), 'y': data['class_id'].to(self.device)}
@@ -72,6 +86,15 @@ class FedPLClient(ClientTemplate):
         self.model.to('cpu')
         return mean_monitor_variables, feature_indicator
 
+    def _store_prev_model(self, model: nn.Module) -> None:
+        r"""
+        Overview:
+            Store the prev model for fedmoon loss calculation.
+        """
+        if len(self.prev_models) >= self.queue_len:
+            self.prev_models.pop(0)
+        self.prev_models.append(copy.deepcopy(model))
+
     def adapt(self, test_data, device=None, ap=0.72, mt=0.999, rst=0.01):
         if device is not None:
             device_bak = self.device
@@ -85,6 +108,9 @@ class FedPLClient(ClientTemplate):
         for param in self.model_past.parameters():
             flatten_model_past.append(param.reshape(-1))
         flatten_model_past = torch.cat(flatten_model_past)
+
+        if self.args.other.method == 'moon':
+            self.glob_model = copy.deepcopy(self.model)
 
         criterion = nn.CrossEntropyLoss()
         self.model.train()
@@ -136,7 +162,7 @@ class FedPLClient(ClientTemplate):
 
                     preprocessed_data = self.preprocess_data(data)
                     batch_x, batch_y = preprocessed_data['x'], preprocessed_data['y']
-                    outputs = self.model(batch_x)
+                    z, outputs = self.model(batch_x, mode='compute-feature-logit')
                     y_pred = torch.argmax(outputs, dim=-1)
                     loss = criterion(outputs, y_pred)
 
@@ -161,6 +187,36 @@ class FedPLClient(ClientTemplate):
                         flatten_model = torch.cat(flatten_model)
                         loss2 = torch.nn.functional.cosine_similarity(flatten_model.unsqueeze(0), flatten_model_past.unsqueeze(0))
                         loss2.backward()
+                    elif self.args.other.method == 'pfedsd' and self.past_per_model is not None:
+                        v_outputs = self.past_per_model(batch_x)
+                        KL_temperature = 1.0
+                        divergence = F.kl_div(
+                            F.log_softmax(outputs / KL_temperature, dim=1),
+                            F.softmax(v_outputs / KL_temperature, dim=1),
+                            reduction="batchmean",
+                        )  # forward KL
+                        loss += KL_temperature * KL_temperature * divergence
+                    elif self.args.other.method == 'moon' :
+                        temperature = 0.5
+                        mu = 1.0
+                        # Calculate fedmoon loss.
+                        cos = nn.CosineSimilarity(dim=-1)
+                        self.glob_model.to(self.device)
+                        with torch.no_grad():
+                            z_glob, _ = self.glob_model(batch_x, mode='compute-feature-logit')
+                        z_i = cos(z, z_glob)
+                        logits = z_i.reshape(-1, 1)
+                        for prev_model in self.prev_models:
+                            prev_model.to(self.device)
+                            with torch.no_grad():
+                                z_prev, _ = prev_model(batch_x, mode='compute-feature-logit')
+                            nega = cos(z, z_prev)
+                            logits = torch.cat((logits, nega.reshape(-1, 1)), dim=1)
+                        logits /= temperature
+                        labels = torch.zeros(batch_x.size(0)).to(self.device).long()
+                        fedmoon_loss = criterion(logits, labels)
+                        # Add the main loss and fedmoon loss together.
+                        loss += mu * fedmoon_loss
 
                     loss.backward()
                     self.optimizer.step()
@@ -173,8 +229,15 @@ class FedPLClient(ClientTemplate):
                         weight=preprocessed_data['y'].shape[0]
                     )
 
+        if self.args.other.method == 'pfedsd':
+            self.past_per_model = copy.deepcopy(self.model)
+            self.past_per_model.requires_grad_(False)
+        elif self.args.other.method == 'moon':
+            self._store_prev_model(self.model)
+
         mean_monitor_variables = monitor.variable_mean()
         self.model.to('cpu')
+
         return mean_monitor_variables
 
     def inference(self, classifier=None, device=None):

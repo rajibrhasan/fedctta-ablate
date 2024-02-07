@@ -1,50 +1,35 @@
 from easydict import EasyDict
 
-common_corruptions = ['gaussian_noise', 'shot_noise', 'impulse_noise', 'defocus_blur', 'glass_blur',
-                      'motion_blur', 'zoom_blur', 'snow', 'frost', 'fog',
-                      'brightness', 'contrast', 'elastic_transform', 'pixelate', 'jpeg_compression']
 exp_args = dict(
-    data=dict(dataset='cifar10_test', data_path='./data/CIFAR10', sample_method=dict(name='iid', train_num=50000, test_num=500),
-              corruption=['gaussian_noise', 'shot_noise', 'impulse_noise', 'defocus_blur', 'glass_blur',
-                      'motion_blur', 'zoom_blur', 'snow', 'frost', 'fog',
-                      'brightness', 'contrast', 'elastic_transform', 'pixelate', 'jpeg_compression'],
-              level=[5], class_number=10),
+    data=dict(
+        dataset='cifar10',
+        data_path='./data/CIFAR10',
+        sample_method=dict(name='iid')
+    ),
     learn=dict(
-        device='cuda:0', local_eps=1, global_eps=1, batch_size=64, optimizer=dict(name='sgd', lr=0.001, momentum=0.9)
+        device='cuda:0',
+        local_eps=8,
+        global_eps=400,
+        batch_size=32,
+        optimizer=dict(name='sgd', lr=0.001, momentum=0.9),
     ),
     model=dict(
-        name='resnet8',
+        name='cnn',
         input_channel=3,
+        linear_hidden_dims=[256],
         class_number=10,
     ),
-    client=dict(name='fedcotta_client', client_num=20),
+    client=dict(name='base_client', client_num=1),
     server=dict(name='base_server'),
-    group=dict(name='adapt_group', aggregation_method='st',
-               aggregation_parameters=dict(
-                   name='include',
-                   keywords='block1'
-               )),
-    other=dict(test_freq=3, logging_path='./logging/1205_cifar10_resnet_STiid_c20_b10_cotta_st',
-               model_path='./pretrain/resnet8_cifar10.ckpt',
-               online=True,
-               adap_iter=1,
-               ttt_batch=10,
-
-               is_continue=False,
-               niid=False,
-
-               is_average=True,
-               method='cotta',
-               pre_trained='resnet8',
-               resume=True,
-               ),
-    fed=dict(is_TA=True,
-             is_GA=True,
-             TA_topk=10000),
+    group=dict(
+        name='base_group',
+        aggregation_method='avg',
+    ),
+    other=dict(test_freq=3, logging_path='./logging/cifar10_pretrain_cnn')
 )
 
 exp_args = EasyDict(exp_args)
 
 if __name__ == '__main__':
-    from fling.pipeline import FedTTA_Pipeline
-    FedTTA_Pipeline(exp_args, seed=0)
+    from fling.pipeline import generic_model_pipeline
+    generic_model_pipeline(exp_args, seed=0)

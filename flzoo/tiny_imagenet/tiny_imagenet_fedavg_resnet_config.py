@@ -4,7 +4,7 @@ exp_args = dict(
     data=dict(
         dataset='tiny_imagenet',
         data_path='./data/tiny-imagenet-200',
-        sample_method=dict(name='iid', train_num=500, test_num=100)
+        sample_method=dict(name='iid', train_num=100000, test_num=10000)
     ),
     learn=dict(
         device='cuda:0', local_eps=8, global_eps=40, batch_size=32, optimizer=dict(name='sgd', lr=0.02, momentum=0.9)
@@ -14,7 +14,7 @@ exp_args = dict(
         input_channel=3,
         class_number=200,
     ),
-    client=dict(name='base_client', client_num=40),
+    client=dict(name='base_client', client_num=1),
     server=dict(name='base_server'),
     group=dict(name='base_group', aggregation_method='avg'),
     other=dict(test_freq=3, logging_path='./logging/tiny_imagenet_fedavg_resnet_iid')
