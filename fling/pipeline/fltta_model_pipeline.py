@@ -202,8 +202,12 @@ def FedTTA_Pipeline(args: dict, seed: int = 0) -> None:
     last_add = all_loop % args.other.loop
     global_eps = [avg_loop for _ in range(args.other.loop-1)] + [avg_loop+last_add]
 
+    print(args.client.sample_rate)
+    print(args.other.is_continue)
+    print(args.other.online)
+
     for level in args.data.level:
-        for lp in range(args.other.loop):
+        for lp in tqdm.tqdm(range(args.other.loop)):
             for cidx in range(len(args.data.corruption)):
                 # determine the corruption
                 logger.logging('Starting Federated Test-Time Adaptation round: ')
@@ -215,6 +219,7 @@ def FedTTA_Pipeline(args: dict, seed: int = 0) -> None:
                 # Random sample participated clients in each communication round.
                 if not args.other.is_continue:
                     group = init_tta_state(args, net, ckpt, logger, corrupt_dict, corrupt_test_sets, origin_test_sets, train_dataloader)
+                    print('Here in the is continue')
 
                 for i in range(global_eps[lp]):
                     global_feature_indicator = []
@@ -223,8 +228,9 @@ def FedTTA_Pipeline(args: dict, seed: int = 0) -> None:
                     # Update each batch
                     if not args.other.online:
                         group = init_tta_state(args, net, ckpt, logger, corrupt_dict, corrupt_test_sets, origin_test_sets)
+                        print('Here in the online')
 
-                    for j in tqdm.tqdm(participated_clients):
+                    for j in participated_clients:
                         # Collect test data
                         corupt = args.data.corruption[corupt_map[j][cidx]]
 
@@ -236,9 +242,9 @@ def FedTTA_Pipeline(args: dict, seed: int = 0) -> None:
                         # Test Before Adaptation
                         test_monitor, feature_indicator = group.clients[j].test_source(test_data=inference_data)
                         test_monitor_list[cidx].append(test_monitor)
-                        logger.logging(
-                            f'Client {j} Corupt {corupt}: Old Test Acc {test_monitor["test_acc"]}, Old Test Loss {test_monitor["test_loss"]}'
-                        )
+                        # logger.logging(
+                        #     f'Client {j} Corupt {corupt}: Old Test Acc {test_monitor["test_acc"]}, Old Test Loss {test_monitor["test_loss"]}'
+                        # )
                         global_feature_indicator.append(feature_indicator)
 
                         #  Client Test Along with Adaptation
@@ -257,7 +263,7 @@ def FedTTA_Pipeline(args: dict, seed: int = 0) -> None:
                         else:
                             group.aggregate_grad(i, global_feature_indicator)
 
-                    for j in tqdm.tqdm(participated_clients):
+                    for j in participated_clients:
                         if 'ft' in args.other.method:
                             adapt_monitor = group.clients[j].adapt(test_data=inference_data)
                         else:
@@ -265,10 +271,10 @@ def FedTTA_Pipeline(args: dict, seed: int = 0) -> None:
                             adapt_monitor = group.clients[j].inference()
                         fed_adapt_monitor_list[cidx].append(adapt_monitor)
 
-                    logger.logging(
-                        f'Coruption Type {corupt}, level {level}, Old Test Acc {adapt_monitor_list[cidx].variable_mean()["test_acc"]}\n,'
-                        f'Fed Adapt Test Acc {fed_adapt_monitor_list[cidx].variable_mean()["test_acc"]}'
-                    )
+                    # logger.logging(
+                    #     f'Coruption Type {corupt}, level {level}, Old Test Acc {adapt_monitor_list[cidx].variable_mean()["test_acc"]}\n,'
+                    #     f'Fed Adapt Test Acc {fed_adapt_monitor_list[cidx].variable_mean()["test_acc"]}'
+                    # )
     if args.group.name == 'adapt_group' or args.group.name == 'fedamp_group' or args.group.name == 'fedgraph_group':
         with open(os.path.join(args.other.logging_path, 'collaboration.pkl'), 'wb') as f:
             pickle.dump(group.collaboration_graph, f)

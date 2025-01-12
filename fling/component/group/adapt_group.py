@@ -111,7 +111,7 @@ class TTAServerGroup(ParameterServerGroup):
                 w_time[k] = w_time[k].cuda()
             weight_list.append(w_time)
 
-        print(space_att)
+        # print(space_att)
         for cidx in range(client_num):
             w_space = copy.deepcopy(self.clients[cidx].model.state_dict())
             S_all = space_att.shape[0]
