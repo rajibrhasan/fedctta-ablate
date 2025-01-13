@@ -261,20 +261,22 @@ class FedSHOTClient(ClientTemplate):
 
         monitor = VariableMonitor()
 
-        for _, data in enumerate(self.adapt_loader):
-            preprocessed_data = self.preprocess_data(data)
-            batch_x, batch_y = preprocessed_data['x'], preprocessed_data['y']
-            outputs = self.model(batch_x)
+        with torch.no_grad():
 
-            y_pred = torch.argmax(outputs, dim=-1)
-            loss = criterion(outputs, batch_y)
-            monitor.append(
-                {
-                    'test_acc': torch.mean((y_pred == preprocessed_data['y']).float()).item(),
-                    'test_loss': loss.item()
-                },
-                weight=preprocessed_data['y'].shape[0]
-            )
+            for _, data in enumerate(self.adapt_loader):
+                preprocessed_data = self.preprocess_data(data)
+                batch_x, batch_y = preprocessed_data['x'], preprocessed_data['y']
+                outputs = self.model(batch_x)
+
+                y_pred = torch.argmax(outputs, dim=-1)
+                loss = criterion(outputs, batch_y)
+                monitor.append(
+                    {
+                        'test_acc': torch.mean((y_pred == preprocessed_data['y']).float()).item(),
+                        'test_loss': loss.item()
+                    },
+                    weight=preprocessed_data['y'].shape[0]
+                )
 
         mean_monitor_variables = monitor.variable_mean()
         self.model.to('cpu')

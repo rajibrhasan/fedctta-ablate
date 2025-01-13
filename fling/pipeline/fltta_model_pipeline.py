@@ -233,6 +233,7 @@ def FedTTA_Pipeline(args: dict, seed: int = 0) -> None:
                     for j in participated_clients:
                         # Collect test data
                         corupt = args.data.corruption[corupt_map[j][cidx]]
+                        # print(corupt)
 
                         indexs = corrupt_test_sets[j][corupt][level].indexes[0:  args.other.ttt_batch]
                         dataset = corrupt_test_sets[j][corupt][level].tot_data
@@ -254,6 +255,7 @@ def FedTTA_Pipeline(args: dict, seed: int = 0) -> None:
                         else:
                             adapt_monitor = group.clients[j].adapt(test_data=inference_data)
                         adapt_monitor_list[cidx].append(adapt_monitor)
+                        # fed_adapt_monitor_list[cidx].append(adapt_monitor)
 
                     # Aggregate parameters in each client.
                     if args.other.is_average:
@@ -271,10 +273,9 @@ def FedTTA_Pipeline(args: dict, seed: int = 0) -> None:
                             adapt_monitor = group.clients[j].inference()
                         fed_adapt_monitor_list[cidx].append(adapt_monitor)
 
-                    # logger.logging(
-                    #     f'Coruption Type {corupt}, level {level}, Old Test Acc {adapt_monitor_list[cidx].variable_mean()["test_acc"]}\n,'
-                    #     f'Fed Adapt Test Acc {fed_adapt_monitor_list[cidx].variable_mean()["test_acc"]}'
-                    # )
+                    logger.logging(
+                        f'Coruption Type: {corupt}{level} | Adapt: {adapt_monitor_list[cidx].variable_mean()["test_acc"]: 0.3f} | Fed Adapt: {fed_adapt_monitor_list[cidx].variable_mean()["test_acc"]: 0.3f}'
+                    )
     if args.group.name == 'adapt_group' or args.group.name == 'fedamp_group' or args.group.name == 'fedgraph_group':
         with open(os.path.join(args.other.logging_path, 'collaboration.pkl'), 'wb') as f:
             pickle.dump(group.collaboration_graph, f)
@@ -286,17 +287,17 @@ def FedTTA_Pipeline(args: dict, seed: int = 0) -> None:
         mean_test_variables = test_monitor_list[cidx].variable_mean()
         data_record[0][cidx] = mean_test_variables["test_acc"]
         logger.logging(
-            f'Corruption Type {corupt}, level {args.data.level}: Old Test Acc {mean_test_variables["test_acc"]}, Old Test Loss {mean_test_variables["test_loss"]}')
+            f'Corruption Type: {corupt}{args.data.level} | Old Test Acc:  {mean_test_variables["test_acc"]: 0.3f} | Old Test Loss {mean_test_variables["test_loss"]: 0.3f}')
 
         mean_adapt_variables = adapt_monitor_list[cidx].variable_mean()
         data_record[1][cidx] = mean_adapt_variables["test_acc"]
         logger.logging(
-            f'Corruption Type {corupt}, level {args.data.level}: Adapt Acc {mean_adapt_variables["test_acc"]}, Adapt Loss {mean_adapt_variables["test_loss"]}')
+            f'Corruption Type: {corupt}{args.data.level} | Adapt Acc: {mean_adapt_variables["test_acc"]: 0.3f} | Adapt Loss {mean_adapt_variables["test_loss"]: 0.3f}')
 
         mean_fed_variables = fed_adapt_monitor_list[cidx].variable_mean()
         data_record[2][cidx] = mean_fed_variables["test_acc"]
         logger.logging(
-            f'Corruption Type {corupt}, level {args.data.level}: Fed Acc {mean_fed_variables["test_acc"]}, Fed Loss {mean_fed_variables["test_loss"]}')
+            f'Corruption Type: {corupt}{args.data.level} | Fed Acc:  {mean_fed_variables["test_acc"]:0.3f} | Fed Loss: {mean_fed_variables["test_loss"]: 0.3f}')
 
     dfData = {
         '序号': ['Before', 'Adapt', 'Fed'],

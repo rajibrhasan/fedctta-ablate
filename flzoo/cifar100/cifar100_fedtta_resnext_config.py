@@ -10,21 +10,21 @@ exp_args = dict(
                       'brightness', 'contrast', 'elastic_transform', 'pixelate', 'jpeg_compression'],
               level=[5], class_number=100),
     learn=dict(
-        device='cuda:0', local_eps=1, global_eps=1, batch_size=64, optimizer=dict(name='sgd', lr=0.001, momentum=0.9)
+        device='cuda:0', local_eps=1, global_eps=1, batch_size=64, optimizer=dict(name='sgd', lr=0.00001, momentum=0.9)
     ),
     model=dict(
         name='cifarresnext',
         class_number=100,
     ),
-    client=dict(name='fedctta_client', client_num=20),
+    client=dict(name='fedshot_client', client_num=20),
     server=dict(name='base_server'),
     group=dict(name='adapt_group', aggregation_method='st',
                aggregation_parameters=dict(
                    name='all',
                )),
-    other=dict(test_freq=3, logging_path='./logging/0126_cifar100_wideresnet_STiid_ST_lp5_t1_rw05',
+    other=dict(test_freq=3, logging_path='./logging/fedshot_cifar100_wideresnet_STniid_ST_lp5_t1_rw05',
                model_path='./pretrain/Hendrycks2020AugMix_ResNeXt.pt',
-               partition_path='../4area.npy',
+               partition_path='4area.npy',
                online=True,
                adap_iter=1,
                ttt_batch=10,
@@ -33,15 +33,15 @@ exp_args = dict(
                niid=False,
 
                is_average=True,
-               method='adapt',
+               method='st',
                pre_trained='cifarresnext',
                resume=True,
 
                time_slide=10,
-               st_lr=1e-3,
+               st_lr=1e-4,
                st_epoch=100,
 
-               robust_weight=1,
+               robust_weight=0.5,
                st='both',
                st_head=1,
 

@@ -29,7 +29,7 @@ class FedCTTAClient(ClientTemplate):
         self.model.load_state_dict(ckpt)
         self.model_state = ckpt
         self.model_anchor = copy.deepcopy(self.model)
-        self.model.requires_grad_(False)
+        self.model.train()
         self.model.requires_grad_(False)
         for m in self.model.modules():
             if isinstance(m, nn.BatchNorm2d):
@@ -48,7 +48,7 @@ class FedCTTAClient(ClientTemplate):
                     if np in ['weight', 'bias'] and p.requires_grad:
                         params.append(p)
                         names.append(f"{nm}.{np}")
-        self.optimizer = torch.optim.Adam(params, lr=self.args.learn.optimizer.lr, betas=(0.9, 0.999), weight_decay=0.)
+        self.optimizer = torch.optim.SGD(params, lr=self.args.learn.optimizer.lr,  weight_decay=0.)
     def preprocess_data(self, data):
         return {'x': data['input'].to(self.device), 'y': data['class_id'].to(self.device)}
 
@@ -146,6 +146,7 @@ class FedCTTAClient(ClientTemplate):
             param.detach_()
         self.model_ema.to(self.device)
         self.model_ema.requires_grad_(False)
+        self.model.train()
         self.model.requires_grad_(False)
         # enable all params trainable
         for m in self.model.modules():
@@ -157,16 +158,15 @@ class FedCTTAClient(ClientTemplate):
             else:
                 m.requires_grad_(True)
 
-        # self.model_past = copy.deepcopy(self.model)
-        # self.model_past.cuda()
-        # flatten_model_past = []
-        # for param in self.model_past.parameters():
-        #     flatten_model_past.append(param.reshape(-1))
-        # flatten_model_past = torch.cat(flatten_model_past)
+        self.model_past = copy.deepcopy(self.model)
+        self.model_past.cuda()
+        flatten_model_past = []
+        for param in self.model_past.parameters():
+            flatten_model_past.append(param.reshape(-1))
+        flatten_model_past = torch.cat(flatten_model_past)
 
         # self.transform = self.get_tta_transforms()
-
-        self.model.train()
+        # self.model.train()
 
         for eps in range(1):
             monitor = VariableMonitor()
@@ -195,28 +195,28 @@ class FedCTTAClient(ClientTemplate):
                 y_pred = torch.argmax(outputs_ema, dim=-1)
                 loss = (self.symmetric_cross_entropy(outputs, outputs_ema)).mean(0)
 
-                # if self.args.group.name == 'fedamp_group':
-                #     for param_p, param in zip(self.model_past.parameters(), self.model.parameters()):
-                #         loss += (1.0 / 2) * torch.norm((param - param_p) ** 2)
-                # elif self.args.group.name == 'fedgraph_group':
-                #     flatten_model = []
-                #     for param in self.model.parameters():
-                #         flatten_model.append(param.reshape(-1))
-                #     flatten_model = torch.cat(flatten_model)
-                #     loss2 = torch.nn.functional.cosine_similarity(flatten_model.unsqueeze(0), flatten_model_past.unsqueeze(0))
-                #     loss2.backward()
-                # elif 'fedprox' in self.args.other.method:
-                #     lambda_1 = 0.01
-                #     for param_p, param in zip(self.model_past.parameters(), self.model.parameters()):
-                #         loss += ((lambda_1 / 2) * torch.norm((param - param_p)) ** 2)
-                # elif self.args.group.name == 'adapt_group' and self.args.group.aggregation_method == 'st':
-                #     flatten_model = []
-                #     for param in self.model.parameters():
-                #         flatten_model.append(param.reshape(-1))
-                #     flatten_model = torch.cat(flatten_model)
-                #     loss2 = torch.nn.functional.cosine_similarity(flatten_model.unsqueeze(0),
-                #                                                   flatten_model_past.unsqueeze(0))
-                #     loss2.backward()
+                if self.args.group.name == 'fedamp_group':
+                    for param_p, param in zip(self.model_past.parameters(), self.model.parameters()):
+                        loss += (1.0 / 2) * torch.norm((param - param_p) ** 2)
+                elif self.args.group.name == 'fedgraph_group':
+                    flatten_model = []
+                    for param in self.model.parameters():
+                        flatten_model.append(param.reshape(-1))
+                    flatten_model = torch.cat(flatten_model)
+                    loss2 = torch.nn.functional.cosine_similarity(flatten_model.unsqueeze(0), flatten_model_past.unsqueeze(0))
+                    loss2.backward()
+                elif 'fedprox' in self.args.other.method:
+                    lambda_1 = 0.01
+                    for param_p, param in zip(self.model_past.parameters(), self.model.parameters()):
+                        loss += ((lambda_1 / 2) * torch.norm((param - param_p)) ** 2)
+                elif self.args.group.name == 'adapt_group' and self.args.group.aggregation_method == 'st':
+                    flatten_model = []
+                    for param in self.model.parameters():
+                        flatten_model.append(param.reshape(-1))
+                    flatten_model = torch.cat(flatten_model)
+                    loss2 = torch.nn.functional.cosine_similarity(flatten_model.unsqueeze(0),
+                                                                  flatten_model_past.unsqueeze(0))
+                    loss2.backward()
 
                 loss.backward()
                 self.optimizer.step()
