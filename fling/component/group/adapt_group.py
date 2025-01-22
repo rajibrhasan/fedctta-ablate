@@ -111,7 +111,7 @@ class TTAServerGroup(ParameterServerGroup):
                 w_time[k] = w_time[k].cuda()
             weight_list.append(w_time)
 
-        # print(space_att)
+        print(space_att)
         for cidx in range(client_num):
             w_space = copy.deepcopy(self.clients[cidx].model.state_dict())
             S_all = space_att.shape[0]
@@ -124,10 +124,49 @@ class TTAServerGroup(ParameterServerGroup):
 
             self.clients[cidx].model.load_state_dict(w_space)
 
+    def aggregate_grad_ours(self, train_round, feature_indicator):
+        client_num = self.args.client.client_num
+
+        feature_indicator = torch.stack(feature_indicator, dim=0)
+        if self.indicator.shape[0] == 0:
+            self.indicator = feature_indicator.unsqueeze(1)
+        else:
+            self.indicator = torch.cat([self.indicator, feature_indicator.unsqueeze(1)], dim=1)
+
+        self.time_slide = self.args.other.time_slide
+        if self.indicator.shape[1] < self.time_slide:
+            feature_input = self.indicator[:, :, :]
+        else:
+            feature_input = self.indicator[:, self.indicator.shape[1] - self.time_slide:, :]
+
+        print(feature_input.shape)
+        
+        feature_input = feature_input.view(len(feature_input), -1)
+        # Normalize the data to unit vectors (important for cosine similarity)
+        normalized_data = F.normalize(feature_input, p=2, dim=1)
+
+        # Compute cosine similarity (20x20 matrix)
+        cosine_similarity_matrix = torch.matmul(normalized_data, normalized_data.T)
+
+       
+        # Apply temperature scaling
+        temperature = 1  # Adjust temperature (smaller = sharper distribution)
+        scaled_similarity = cosine_similarity_matrix / temperature
+
+        # Apply softmax row-wise
+        softmax_similarity = F.softmax(scaled_similarity, dim=1)
+
+        self.st_agg_grad(softmax_similarity, softmax_similarity)
+
+
+
     def aggregate_grad(self, train_round, feature_indicator):
         client_num = self.args.client.client_num
         # for cidx in range(client_num):
         #     self.history_weight[cidx].append(self.clients[cidx].model.state_dict())
+
+        # if self.args.other.feat_sim == 'pvec':
+            
 
         if self.args.group.aggregation_method == 'st':
             time_att, space_att = self.ST_attention(feature_indicator)
@@ -264,6 +303,8 @@ class TTAServerGroup(ParameterServerGroup):
             self.indicator = feature_indicator.unsqueeze(1)
         else:
             self.indicator = torch.cat([self.indicator, feature_indicator.unsqueeze(1)], dim=1)
+
+        # print(self.indicator.shape)
 
         # Get Aggregate Weights with Trainable Modules
         self.time_slide = self.args.other.time_slide

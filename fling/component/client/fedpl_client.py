@@ -9,6 +9,8 @@ from .client_template import ClientTemplate
 from fling.model import get_model
 from fling.utils.utils import VariableMonitor
 import torch.nn.functional as F
+import numpy as np
+from sklearn.decomposition import PCA
 
 import torchvision.transforms as transforms
 import fling.component.client.my_transformers as my_transforms
@@ -70,8 +72,22 @@ class FedPLClient(ClientTemplate):
                 feature, out = self.model_anchor(batch_x, mode='compute-feature-logit')
                 y_pred = torch.argmax(out, dim=-1)
 
-                feature_mean = feature.mean(dim=0)
-                feature_indicator = feature_mean
+
+                if self.args.other.feat_sim == 'pvec':
+                    n_samples = batch_x.size(0)
+                    X_flat = batch_x.view(n_samples, -1).cpu().numpy()
+                    pca = PCA(n_components=1)
+                    X_reduced = pca.fit_transform(X_flat)
+                    components = torch.tensor(pca.components_).flatten().to(self.device)
+                    feature_indicator = components
+                
+                elif self.args.other.feat_sim == 'output':
+                    feature_indicator = out.mean(dim=0)
+
+                else:
+                    feature_mean = feature.mean(dim=0)
+                    feature_indicator = feature_mean
+
 
                 loss = criterion(out, batch_y)
                 monitor.append(
@@ -159,7 +175,6 @@ class FedPLClient(ClientTemplate):
             for eps in range(1):
                 for _, data in enumerate(self.adapt_loader):
                     self.optimizer.zero_grad()
-
                     preprocessed_data = self.preprocess_data(data)
                     batch_x, batch_y = preprocessed_data['x'], preprocessed_data['y']
                     z, outputs = self.model(batch_x, mode='compute-feature-logit')
@@ -270,6 +285,45 @@ class FedPLClient(ClientTemplate):
         mean_monitor_variables = monitor.variable_mean()
         self.model.to('cpu')
         return mean_monitor_variables
+    
+    def get_logits(self, test_data, classifier=None, device=None):
+        if device is not None:
+            device_bak = self.device
+            self.device = device
+        self.model.to(self.device)
+
+        self.model.eval()
+        self.model.requires_grad_(False)
+
+        # criterion = nn.CrossEntropyLoss()
+        # monitor = VariableMonitor()
+
+       
+        preprocessed_data = self.preprocess_data(test_data)
+        batch_x, batch_y = preprocessed_data['x'], preprocessed_data['y']
+        feature, out = self.model(batch_x, mode='compute-feature-logit')
+
+        if self.args.other.feat_sim =='output':
+            feature_indicator = out.mean(dim=0)
+        else:
+            feature_indicator = feature.mean(dim = 0)
+
+
+        # feature_indicator = outputs.mean(dim=0)
+
+            # y_pred = torch.argmax(outputs, dim=-1)
+            # loss = criterion(outputs, batch_y)
+            # monitor.append(
+            #     {
+            #         'test_acc': torch.mean((y_pred == preprocessed_data['y']).float()).item(),
+            #         'test_loss': loss.item()
+            #     },
+            #     weight=preprocessed_data['y'].shape[0]
+            # )
+
+        # mean_monitor_variables = monitor.variable_mean()
+        self.model.to('cpu')
+        return feature_indicator
 
 
 

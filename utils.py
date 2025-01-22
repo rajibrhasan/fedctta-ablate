@@ -82,6 +82,18 @@ arr = np.array([
             [12, 13, 14, 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11],
             [12, 13, 14, 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11],
             ])
-print(arr.shape)
 
-np.save('4area.npy', arr)
+
+# np.save('4area.npy', arr)
+
+
+import pickle
+import numpy as np
+import torch
+
+# Load the .pkl file
+data = torch.load('logging/fedshot_niid_resnext_lp1/collaboration.pkl')
+# Convert to a NumPy array
+numpy_array = np.array(data)
+
+print(numpy_array.shape)

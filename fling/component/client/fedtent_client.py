@@ -8,6 +8,7 @@ from fling.utils.registry_utils import CLIENT_REGISTRY
 from .client_template import ClientTemplate
 from fling.model import get_model
 from fling.utils.utils import VariableMonitor
+from sklearn.decomposition import PCA
 
 
 @CLIENT_REGISTRY.register('fedtent_client')
@@ -63,8 +64,23 @@ class FedTentClient(ClientTemplate):
                 feature, out = self.model_anchor(batch_x, mode='compute-feature-logit')
                 y_pred = torch.argmax(out, dim=-1)
 
-                feature_mean = feature.mean(dim=0)
-                feature_indicator = feature_mean
+                # feature_mean = feature.mean(dim=0)
+                # feature_indicator = feature_mean
+
+                if self.args.other.feat_sim == 'feature':
+                    feature_mean = feature.mean(dim=0)
+                    feature_indicator = feature_mean
+
+                elif self.args.other.feat_sim == 'pvec':
+                    n_samples = batch_x.size(0)
+                    X_flat = batch_x.view(n_samples, -1).cpu().numpy()
+                    pca = PCA(n_components=2)
+                    X_reduced = pca.fit_transform(X_flat)
+                    components = torch.tensor(pca.components_).flatten().to(self.device)
+                    feature_indicator = components
+                
+                
+
 
                 loss = criterion(out, batch_y)
                 monitor.append(

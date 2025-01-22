@@ -15,6 +15,7 @@
 
 pkg/
 src/
+wandb/
 
 ### CVS template
 /CVS/*

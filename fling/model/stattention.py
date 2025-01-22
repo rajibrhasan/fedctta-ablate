@@ -192,6 +192,7 @@ def aug_temporal(t_sim_A, percent=0.75, random=False):
     return time_mask
 
 def aug_spatiol(sim_mx, graph, percent=0.8, random=False):
+
     drop_percent = percent
     add_percent = 1 - percent
 

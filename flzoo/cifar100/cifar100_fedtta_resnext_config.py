@@ -18,11 +18,11 @@ exp_args = dict(
     ),
     client=dict(name='fedshot_client', client_num=20),
     server=dict(name='base_server'),
-    group=dict(name='adapt_group', aggregation_method='st',
+    group=dict(name='adapt_group', aggregation_method='sim',
                aggregation_parameters=dict(
                    name='all',
                )),
-    other=dict(test_freq=3, logging_path='./logging/fedshot_cifar100_wideresnet_STniid_ST_lp5_t1_rw05',
+    other=dict(test_freq=3, logging_path='./logging/fedshot_cifar100_resnext_iid_lp5_pvec',
                model_path='./pretrain/Hendrycks2020AugMix_ResNeXt.pt',
                partition_path='4area.npy',
                online=True,
@@ -33,7 +33,7 @@ exp_args = dict(
                niid=False,
 
                is_average=True,
-               method='st',
+               method='adapt',
                pre_trained='cifarresnext',
                resume=True,
 
@@ -44,7 +44,6 @@ exp_args = dict(
                robust_weight=0.5,
                st='both',
                st_head=1,
-
                loop=5,
                ),
     fed=dict(is_TA=True,

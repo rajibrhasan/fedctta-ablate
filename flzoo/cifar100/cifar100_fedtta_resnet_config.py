@@ -1,5 +1,13 @@
 from easydict import EasyDict
 
+import datetime
+
+# Get the current date and time
+now = datetime.datetime.now()
+
+# Format the datetime to include in the filename
+time_fn = now.strftime("%Y_%m_%d_%H_%M_%S")
+
 common_corruptions = ['gaussian_noise', 'shot_noise', 'impulse_noise', 'defocus_blur', 'glass_blur',
                       'motion_blur', 'zoom_blur', 'snow', 'frost', 'fog',
                       'brightness', 'contrast', 'elastic_transform', 'pixelate', 'jpeg_compression']
@@ -10,40 +18,39 @@ exp_args = dict(
                       'brightness', 'contrast', 'elastic_transform', 'pixelate', 'jpeg_compression'],
               level=[5], class_number=100),
     learn=dict(
-        device='cuda:0', local_eps=1, global_eps=1, batch_size=64, optimizer=dict(name='sgd', lr=0.0001, momentum=0.9)
+        device='cuda:0', local_eps=1, global_eps=1, batch_size=64, optimizer=dict(name='sgd', lr=0.00001, momentum=0.9)
     ),
     model=dict(
         name='cifarresnext',
         class_number=100,
     ),
-    client=dict(name='fedshot_client', client_num=20),
+    client=dict(name='fedpl_client', client_num=20),
     server=dict(name='base_server'),
-    group=dict(name='adapt_group', aggregation_method='avg',
+    group=dict(name='adapt_group', aggregation_method='st',
                aggregation_parameters=dict(
                    name='all',
                )),
-    other=dict(test_freq=3, logging_path='./logging/0124_cifar100_IID_resnext_grad_fedavg_ft',
+    other=dict(test_freq=3, logging_path='./logging/del_fedpl_grad_niid_resnext29_lp1_'+time_fn,
                model_path='./pretrain/Hendrycks2020AugMix_ResNeXt.pt',
-               partition_path='../4area.npy',
+               partition_path='4area.npy',
                online=True,
                adap_iter=1,
-               ttt_batch=20,
-
+               ttt_batch=10,
                is_continue=True,
-               niid=False,
-
+               niid=True,
+               feat_sim = 'output',
                is_average=True,
                method='adapt',
+            #    method = 'bn',
                pre_trained='cifarresnext',
                resume=True,
-
-               time_slide=5,
+               time_slide=10,
                st_lr=1e-4,
                st_epoch=100,
-
-               robust_weight=10,
+               robust_weight=0.5,
                st='both',
                st_head=1,
+               loop = 1
                ),
     fed=dict(is_TA=True,
              is_GA=True,
