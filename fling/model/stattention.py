@@ -157,6 +157,7 @@ class ST_block(nn.Module):
                     time_mask = aug_temporal(t_sim_A, random=True)
                     space_mask = aug_spatiol(s_sim_A, graph, random=True)
                 else:
+                    # print('Found it')
                     time_mask = aug_temporal(t_sim_A)
                     space_mask = aug_spatiol(s_sim_A, graph)
                 x2, _, _ = self.TA1(x, attention_mask=(time_mask == 0))

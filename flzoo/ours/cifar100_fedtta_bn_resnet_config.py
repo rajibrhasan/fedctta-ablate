@@ -25,14 +25,13 @@ exp_args = dict(
         name='cifarresnext',
         class_number=100,
     ),
-    client=dict(name='fedpl_client', client_num=20),
+    client=dict(name='fedtta_client', client_num=20),
     server=dict(name='base_server'),
     group=dict(name='adapt_group', aggregation_method='st',
                aggregation_parameters=dict(
                    name='all',
                )),
-    other=dict(test_freq=3, 
-               logging_path='./logging/tsa_fedpl_grad_niid_resnext29_lp1_'+time_fn,
+    other=dict(test_freq=3, logging_path='./logging/output_random_data_fedtta_bn_niid_resnext29_lp1_'+time_fn,
                model_path='./pretrain/Hendrycks2020AugMix_ResNeXt.pt',
                partition_path='4area.npy',
                online=True,
@@ -41,8 +40,7 @@ exp_args = dict(
                is_continue=True,
                niid=False,
                is_average= True,
-               method='adapt',
-            #    method = 'bn',
+               method = 'bn',
                pre_trained='cifarresnext',
                resume=True,
                time_slide=10,
@@ -57,18 +55,19 @@ exp_args = dict(
     fed=dict(is_TA=True,
              is_GA=True,
              TA_topk=10000),
-    method = dict(name = "tsa", #Ffedtsa or ours
-                  feat_sim = "feature", #Output or feature
-                  public_data = False,
-                  random_data = False
-                ),
+
+    method = dict(name = "ours",
+                  feat_sim = "output",
+                  data_used = "random"
+                  )
 )
 
 exp_args = EasyDict(exp_args)
 
 iid_text = "niid" if exp_args.other.niid else "iid"
-file_name = f"{exp_args.method.name}_{exp_args.method.feat_sim}_{exp_args.client.name}_{iid_text}_resnext29_lp_{exp_args.other.loop}_{time_fn}"
-exp_args.other.logging_path = os.path.join('logging', exp_args.data.dataset, exp_args.other.method, exp_args.client.name,file_name )
+file_name = f"{exp_args.method.name}_{exp_args.method.data_used}_{exp_args.method.feat_sim}_{exp_args.other.method}_{exp_args.client.name}_{iid_text}_resnext29_lp_{exp_args.other.loop}_{time_fn}"
+exp_args.other.logging_path = os.path.join('logging', exp_args.data.dataset, "tta_bn",file_name )
+print(exp_args.other.logging_path)
 
 if __name__ == '__main__':
     from fling.pipeline import FedTTA_Pipeline

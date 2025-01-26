@@ -87,13 +87,17 @@ arr = np.array([
 # np.save('4area.npy', arr)
 
 
+import os
 import pickle
-import numpy as np
 import torch
+# Define the file path
+file_path = 'logging/cifar100_test/tta_bn/ours_random_output_bn_fedtta_client_iid_resnext29_lp_1_2025_01_26_16_12_06/collaboration.pkl'
 
-# Load the .pkl file
-data = torch.load('logging/fedshot_niid_resnext_lp1/collaboration.pkl')
-# Convert to a NumPy array
-numpy_array = np.array(data)
+# Open the file and load the collaboration graph
+with open(file_path, 'rb') as f:
+    collaboration_graph = pickle.load(f)
 
-print(numpy_array.shape)
+collaboration_graph = torch.stack(collaboration_graph)
+
+# Now, `collaboration_graph` contains the deserialized object
+print(collaboration_graph[374])  # Print or inspect the loaded graph

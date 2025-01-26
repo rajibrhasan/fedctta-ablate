@@ -172,23 +172,28 @@ def compute_average_differences(group):
     
     return avg_differences
 
-def compute_differences(features, f_name):
+def compute_differences(features, f_name, mode = 'diff'):
     model_count = len(features)
     differences = []
     
     # Compute pairwise average differences
     for i in range(model_count):
-        for j in range(i + 1, model_count):
-            diff = torch.norm(features[i] - features[j]).item()
-            differences.append((f"client_{i+1}_vs_client{j+1}", diff))
+        for j in range(i, model_count):
+            if mode == 'diff':
+                diff = torch.norm(features[i] - features[j]).item()
+                differences.append((f"client_{i+1}_vs_client{j+1}", diff))
+            elif mode == 'sim':
+                sim = torch.nn.functional.cosine_similarity(features[i].unsqueeze(0), features[j].unsqueeze(0))
+                differences.append((f"client_{i+1}_vs_client{j+1}", sim))
+
+            else:
+                raise NotImplementedError
 
 
     print(f"Average Differences Between {f_name}")
     for model_pair, diff in differences:
         wandb.log({f"{model_pair}": diff})
     
-
-
 def FedTTA_Pipeline(args: dict, seed: int = 0) -> None:
     # Compile the input arguments first.
     args = compile_config(args, seed)
@@ -198,12 +203,8 @@ def FedTTA_Pipeline(args: dict, seed: int = 0) -> None:
 
 
     wandb.login(key="f22f65f9d8ca626c5d8a36d80eee6506d14501c3")
-    run_name = f"{args.data.dataset}_{args.other.feat_sim}_{args.other.method}_"
-    if args.other.niid:
-        run_name += "niid"
-    else:
-        run_name += "iid"
-    wandb.init(project="fed_tta_v2", dir="output", name=run_name+"_unsupervised")
+    run_name = args.other.logging_path.split('/')[-1]
+    wandb.init(project="fed_tta_v2", dir="output", name=run_name)
 
     # Load origin train dataset `origin_train_set`, origin test dataset `origin_test_set`
     dataset_name = args.data.dataset
@@ -215,11 +216,6 @@ def FedTTA_Pipeline(args: dict, seed: int = 0) -> None:
     origin_train_set = get_dataset(args, train=True)
     train_dataloader = DataLoader(origin_train_set, batch_size=args.learn.batch_size, shuffle=True)
     test_dataloader = DataLoader(origin_test_set, batch_size=args.learn.batch_size, shuffle=False)
-
-    for _, data in enumerate(test_dataloader):
-        test_data = data
-        break
-
 
 
     # Corrupted Type & Level Test Data
@@ -301,6 +297,8 @@ def FedTTA_Pipeline(args: dict, seed: int = 0) -> None:
     print(args.other.is_continue)
     print(args.other.online)
 
+    cnt = 0
+
     for level in args.data.level:
         for lp in tqdm.tqdm(range(args.other.loop)):
             for cidx in range(len(args.data.corruption)):
@@ -317,6 +315,7 @@ def FedTTA_Pipeline(args: dict, seed: int = 0) -> None:
                     print('Here in the is continue')
 
                 for i in range(global_eps[lp]):
+                    cnt += 1
                     global_feature_indicator = []
                     global_mean = []
 
@@ -351,18 +350,35 @@ def FedTTA_Pipeline(args: dict, seed: int = 0) -> None:
                             adapt_monitor = group.clients[j].adapt(test_data=inference_data)
                         adapt_monitor_list[cidx].append(adapt_monitor)
                         # fed_adapt_monitor_list[cidx].append(adapt_monitor)
-                    
-                        feature_indicator = group.clients[j].get_logits(test_data)
+
+                        if args.method.data_used != "original":
+                            if args.method.data_used == 'random':
+                                print('Inside random')
+                                test_data = {}
+                                test_data['input'] = torch.rand((64, 3, 32, 32))
+                                test_data['class_id'] = torch.randint(low = 0, high=100, size = (64,))
+                                
+                            else:
+                                for _, data in enumerate(test_dataloader):
+                                    test_data = data
+                                    break
+                            feature_indicator = group.clients[j].get_logits(test_data)
                         # print(feature_indicator.shape)
                         global_feature_indicator.append(feature_indicator)
 
                     # Aggregate parameters in each client.
-                    if args.other.is_average:
+                    if args.other.is_average :
                         logger.logging('-' * 10 + ' Average ' + '-' * 10)
                         if args.other.method == 'bn':
-                            group.aggregate_bn(i, global_mean, global_feature_indicator)
+                            if args.method.name == 'fedtsa':
+                                group.aggregate_bn(i, global_mean, global_feature_indicator)
+                            else:
+                                group.aggregate_bn_ours(i, global_mean, global_feature_indicator)
                         else:
-                            group.aggregate_grad(i, global_feature_indicator)
+                            if args.method.name == 'fedtsa':
+                                group.aggregate_grad_ours(i, global_feature_indicator)
+                            else:
+                                group.aggregate_grad_ours(i, global_feature_indicator)
 
                     for j in participated_clients:
                         if 'ft' in args.other.method:
@@ -376,16 +392,25 @@ def FedTTA_Pipeline(args: dict, seed: int = 0) -> None:
                     # Compute and log average differences
                     # compute_average_differences(group)
 
-                    if args.other.feat_sim == 'feature':
-                        compute_differences(global_feature_indicator, 'Feature Mean')
+                    sim_mat = torch.stack(global_feature_indicator, dim = 0)
+                    pairwise_diff = sim_mat.unsqueeze(0) - sim_mat.unsqueeze(1)
+                    pairwise_norm = -1*torch.norm(pairwise_diff, dim=-1)
 
-                    elif args.other.feat_sim == 'pvec':
-                        compute_differences(global_feature_indicator, 'Principal Vector')
+                    print(torch.softmax(pairwise_norm, dim = -1))
+                   
+
+                    diff_mode = 'diff'
+
+                    if args.method.feat_sim == 'feature':
+                        compute_differences(global_feature_indicator, 'Feature Mean', diff_mode)
+
+                    elif args.method.feat_sim == 'pvec':
+                        compute_differences(global_feature_indicator, 'Principal Vector', diff_mode)
                     
-                    elif args.other.feat_sim == 'output':
-                        compute_differences(global_feature_indicator, 'Output')
+                    elif args.method.feat_sim == 'output':
+                        compute_differences(global_feature_indicator, 'Output', diff_mode)
                     
-                    elif args.other.feat_sim == 'model':
+                    elif args.method.feat_sim == 'model':
                         flattened_weights_list = []
                         for client in group.clients:
                             # Flatten and concatenate all parameters, detaching them from the computation graph
@@ -393,18 +418,18 @@ def FedTTA_Pipeline(args: dict, seed: int = 0) -> None:
                             flattened_weights = torch.cat([param.view(-1).detach() for param in client.model.parameters() if param.requires_grad])
                             flattened_weights_list.append(flattened_weights)
                         
-                        compute_differences(flattened_weights_list, 'Model Weight')
+                        compute_differences(flattened_weights_list, 'Model Weight', diff_mode)
                     
-                    elif args.other.feat_sim == 'gradient':
+                    elif args.method.feat_sim == 'gradient':
                         flattened_gradients_list = []
                         for client in group.clients:
                             flattened_gradients = torch.cat([param.grad.view(-1) for param in client.model.parameters() if param.grad is not None])
                             flattened_gradients_list.append(flattened_gradients)
-                        compute_differences(flattened_gradients_list, 'Gradient')
+                        compute_differences(flattened_gradients_list, 'Gradient', diff_mode)
 
                     
                     # tsne_plot(group, participated_clients, args.other.logging_path)
-                    num_round = lp * 15 + cidx
+                    num_round = cidx * global_eps[lp] + i
 
                     logger.logging(
                         f'{num_round} / 750 | Coruption Type: {corupt}{level} | Adapt: {adapt_monitor_list[cidx].variable_mean()["test_acc"]: 0.3f} | Fed Adapt: {fed_adapt_monitor_list[cidx].variable_mean()["test_acc"]: 0.3f}'
@@ -441,8 +466,8 @@ def FedTTA_Pipeline(args: dict, seed: int = 0) -> None:
         dfData[corupt] = data_record[:, cidx]
     dfData['Avg'] = data_record_mean
     df = pd.DataFrame(dfData)
+    wandb.log(dfData)
+    print(dfData)
     df.to_excel(os.path.join(args.other.logging_path, 'outcome.xlsx'), index=False)
 
-    # /teamspace/studios/this_studio/FedCTTA/fling/pipeline/fltta_model_pipeline.py
-
-
+    # /teamspace/studios/this_studio/FedCTTA/fling/pipeline/fltta_model_pipeline.

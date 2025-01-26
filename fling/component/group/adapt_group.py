@@ -125,39 +125,54 @@ class TTAServerGroup(ParameterServerGroup):
             self.clients[cidx].model.load_state_dict(w_space)
 
     def aggregate_grad_ours(self, train_round, feature_indicator):
-        client_num = self.args.client.client_num
+        # client_num = self.args.client.client_num
 
-        feature_indicator = torch.stack(feature_indicator, dim=0)
-        if self.indicator.shape[0] == 0:
-            self.indicator = feature_indicator.unsqueeze(1)
-        else:
-            self.indicator = torch.cat([self.indicator, feature_indicator.unsqueeze(1)], dim=1)
+        # feature_indicator = torch.stack(feature_indicator, dim=0)
+        # if self.indicator.shape[0] == 0:
+        #     self.indicator = feature_indicator.unsqueeze(1)
+        # else:
+        #     self.indicator = torch.cat([self.indicator, feature_indicator.unsqueeze(1)], dim=1)
 
-        self.time_slide = self.args.other.time_slide
-        if self.indicator.shape[1] < self.time_slide:
-            feature_input = self.indicator[:, :, :]
-        else:
-            feature_input = self.indicator[:, self.indicator.shape[1] - self.time_slide:, :]
+        # self.time_slide = self.args.other.time_slide
+        # if self.indicator.shape[1] < self.time_slide:
+        #     feature_input = self.indicator[:, :, :]
+        # else:
+        #     feature_input = self.indicator[:, self.indicator.shape[1] - self.time_slide:, :]
 
-        print(feature_input.shape)
+        # print(feature_input.shape)
         
-        feature_input = feature_input.view(len(feature_input), -1)
-        # Normalize the data to unit vectors (important for cosine similarity)
-        normalized_data = F.normalize(feature_input, p=2, dim=1)
+        # feature_input = feature_input.view(len(feature_input), -1)
+        # # Normalize the data to unit vectors (important for cosine similarity)
+        # normalized_data = F.normalize(feature_input, p=2, dim=1)
 
-        # Compute cosine similarity (20x20 matrix)
-        cosine_similarity_matrix = torch.matmul(normalized_data, normalized_data.T)
+        # # Compute cosine similarity (20x20 matrix)
+        # cosine_similarity_matrix = torch.matmul(normalized_data, normalized_data.T)
 
        
-        # Apply temperature scaling
-        temperature = 1  # Adjust temperature (smaller = sharper distribution)
-        scaled_similarity = cosine_similarity_matrix / temperature
+        # # Apply temperature scaling
+        # temperature = 1  # Adjust temperature (smaller = sharper distribution)
+        # scaled_similarity = cosine_similarity_matrix / temperature
 
-        # Apply softmax row-wise
-        softmax_similarity = F.softmax(scaled_similarity, dim=1)
+        # # Apply softmax row-wise
+        # softmax_similarity = F.softmax(scaled_similarity, dim=1)
 
-        self.st_agg_grad(softmax_similarity, softmax_similarity)
+        diff_mat = torch.stack(feature_indicator, dim = 0)
+        pairwise_diff = diff_mat.unsqueeze(0) - diff_mat.unsqueeze(1)
+        
+        threshold = torch.mean(pairwise_diff)
+        mask = (pairwise_diff <= threshold).all(dim=-1)  # Shape: [n, n]
+        # `mask` is True where elements are within the threshold, False otherwise
 
+        # print(mask)
+        # Apply mask to pairwise_norm
+        pairwise_norm = -1 * torch.norm(pairwise_diff, dim=-1)  # Shape: [n, n]
+        # pairwise_norm = pairwise_norm.masked_fill(~mask, float('-inf'))  # Mask elements > threshold
+
+        # Compute softmax on the masked pairwise_norm
+        space_att = torch.softmax(pairwise_norm, dim=-1)  # Shape: [n, n]
+
+        self.st_agg_grad(space_att, space_att)
+        self.collaboration_graph.append(space_att)
 
 
     def aggregate_grad(self, train_round, feature_indicator):
@@ -230,6 +245,51 @@ class TTAServerGroup(ParameterServerGroup):
                 sum_var[cidx][chosen_layer] = out[cidx][T - 1][half:]
         return sum_mean, sum_var
 
+    def aggregate_bn_ours(self, train_round, global_mean, feature_indicator):
+        # Store feature mean and variance
+        n_chosen_layer = len(global_mean[0])
+        client_num = self.args.client.client_num
+        if len(self.history_feature) == 0:
+            self.history_feature = [[] for _ in range(n_chosen_layer)]
+            for chosen_layer in range(n_chosen_layer):
+                feature_t = []
+                for cidx in range(client_num):
+                    feature_t.append(global_mean[cidx][chosen_layer])
+                feature_t = torch.stack(feature_t, dim=0)
+                self.history_feature[chosen_layer] = feature_t.unsqueeze(1)
+        else:
+            for chosen_layer in range(n_chosen_layer):
+                feature_t = []
+                for cidx in range(client_num):
+                    feature_t.append(global_mean[cidx][chosen_layer])
+                feature_t = torch.stack(feature_t, dim=0)
+                self.history_feature[chosen_layer] = torch.cat([self.history_feature[chosen_layer], feature_t.unsqueeze(1)], dim=1)
+
+        # calculate aggregation rate & aggregate model weight
+        sum_mean = [[[] for _ in range(n_chosen_layer)] for _ in range(client_num)]
+        sum_var = [[[] for _ in range(n_chosen_layer)] for _ in range(client_num)]
+       
+        diff_mat = torch.stack(feature_indicator, dim = 0)
+        pairwise_diff = diff_mat.unsqueeze(0) - diff_mat.unsqueeze(1)
+        
+        threshold = torch.mean(pairwise_diff)
+        mask = (pairwise_diff <= threshold).all(dim=-1)  # Shape: [n, n]
+        # `mask` is True where elements are within the threshold, False otherwise
+
+        # print(mask)
+        # Apply mask to pairwise_norm
+        pairwise_norm = -1 * torch.norm(pairwise_diff, dim=-1)  # Shape: [n, n]
+        # pairwise_norm = pairwise_norm.masked_fill(~mask, float('-inf'))  # Mask elements > threshold
+
+        # Compute softmax on the masked pairwise_norm
+        space_att = torch.softmax(pairwise_norm, dim=-1)  # Shape: [n, n]
+
+        self.collaboration_graph.append(space_att)
+        sum_mean, sum_var = self.st_agg_bn(space_att=space_att, global_mean=global_mean, wotime=True)
+
+        for cidx in range(client_num):
+            self.clients[cidx].update_bnstatistics(sum_mean[cidx], sum_var[cidx])
+
     def aggregate_bn(self, train_round, global_mean, feature_indicator):
         # Store feature mean and variance
         n_chosen_layer = len(global_mean[0])
@@ -289,6 +349,7 @@ class TTAServerGroup(ParameterServerGroup):
             space_att= self.S_similarity(feature_indicator)
             sum_mean, sum_var = self.st_agg_bn(space_att=space_att, global_mean=global_mean, wotime=True)
 
+        print(space_att)
         for cidx in range(client_num):
             self.clients[cidx].update_bnstatistics(sum_mean[cidx], sum_var[cidx])
 

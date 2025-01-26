@@ -26,6 +26,8 @@ class FedPLClient(ClientTemplate):
         self.class_number = args.data.class_number
         self.adapt_iters = 1
         self.model = get_model(args)
+        self.feat_ema = None
+        self.feat_ema2 = None
         if 'tiny' in args.data.dataset:
             self.model.avgpool = nn.AdaptiveAvgPool2d(1)
             num_features = self.model.fc.in_features
@@ -73,7 +75,7 @@ class FedPLClient(ClientTemplate):
                 y_pred = torch.argmax(out, dim=-1)
 
 
-                if self.args.other.feat_sim == 'pvec':
+                if self.args.method.feat_sim == 'pvec':
                     n_samples = batch_x.size(0)
                     X_flat = batch_x.view(n_samples, -1).cpu().numpy()
                     pca = PCA(n_components=1)
@@ -81,12 +83,17 @@ class FedPLClient(ClientTemplate):
                     components = torch.tensor(pca.components_).flatten().to(self.device)
                     feature_indicator = components
                 
-                elif self.args.other.feat_sim == 'output':
+                elif self.args.method.feat_sim == 'output':
                     feature_indicator = out.mean(dim=0)
 
                 else:
                     feature_mean = feature.mean(dim=0)
                     feature_indicator = feature_mean
+
+                if self.feat_ema2 is None:
+                    self.feat_ema2 = feature_indicator
+                else:
+                    self.feat_ema2 = self.args.other.alpha * self.feat_ema2 +  (1-self.args.other.alpha) * feature_indicator
 
 
                 loss = criterion(out, batch_y)
@@ -100,7 +107,9 @@ class FedPLClient(ClientTemplate):
 
         mean_monitor_variables = monitor.variable_mean()
         self.model.to('cpu')
-        return mean_monitor_variables, feature_indicator
+        if self.args.method.name == 'fedtsa':
+            return mean_monitor_variables, feature_indicator
+        return mean_monitor_variables, self.feat_ema2
 
     def _store_prev_model(self, model: nn.Module) -> None:
         r"""
@@ -303,11 +312,15 @@ class FedPLClient(ClientTemplate):
         batch_x, batch_y = preprocessed_data['x'], preprocessed_data['y']
         feature, out = self.model(batch_x, mode='compute-feature-logit')
 
-        if self.args.other.feat_sim =='output':
+        if self.args.method.feat_sim =='output':
             feature_indicator = out.mean(dim=0)
         else:
             feature_indicator = feature.mean(dim = 0)
 
+        if self.feat_ema is None:
+            self.feat_ema = feature_indicator
+        else:
+            self.feat_ema = self.args.other.alpha * self.feat_ema +  (1-self.args.other.alpha) * feature_indicator
 
         # feature_indicator = outputs.mean(dim=0)
 
@@ -323,7 +336,11 @@ class FedPLClient(ClientTemplate):
 
         # mean_monitor_variables = monitor.variable_mean()
         self.model.to('cpu')
-        return feature_indicator
+
+        if self.args.method.name == 'fedtsa':
+            return feature_indicator
+
+        return self.feat_ema
 
 
 

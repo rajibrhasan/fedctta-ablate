@@ -42,7 +42,6 @@ exp_args = dict(
                niid=False,
                is_average= True,
                method='adapt',
-            #    method = 'bn',
                pre_trained='cifarresnext',
                resume=True,
                time_slide=10,
@@ -57,10 +56,9 @@ exp_args = dict(
     fed=dict(is_TA=True,
              is_GA=True,
              TA_topk=10000),
-    method = dict(name = "tsa", #Ffedtsa or ours
-                  feat_sim = "feature", #Output or feature
-                  public_data = False,
-                  random_data = False
+    method = dict(name = "ours", #Ffedtsa or ours
+                  feat_sim = "output", #Output or feature
+                  data_used = "random"
                 ),
 )
 
@@ -68,7 +66,7 @@ exp_args = EasyDict(exp_args)
 
 iid_text = "niid" if exp_args.other.niid else "iid"
 file_name = f"{exp_args.method.name}_{exp_args.method.feat_sim}_{exp_args.client.name}_{iid_text}_resnext29_lp_{exp_args.other.loop}_{time_fn}"
-exp_args.other.logging_path = os.path.join('logging', exp_args.data.dataset, exp_args.other.method, exp_args.client.name,file_name )
+exp_args.other.logging_path = os.path.join('logging', exp_args.data.dataset, "tta_grad", file_name )
 
 if __name__ == '__main__':
     from fling.pipeline import FedTTA_Pipeline
