@@ -65,6 +65,7 @@ exp_args = EasyDict(exp_args)
 
 lp_list  = [1, 10, 20, 40, 50]
 for lp in lp_list:
+    print('Loop: ', lp)
     seed = random.randint(1, 1000)
     iid_text = "niid" if exp_args.other.niid else "iid"
     exp_args.other.loop = lp
