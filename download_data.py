@@ -2,6 +2,7 @@ from robustbench.data import load_cifar100c, load_cifar10c
 from robustbench.utils import load_model
 import numpy as np
 import gdown
+import os
 
 
 x_test, y_tes = load_cifar10c(10000, data_dir = 'data/CIFAR10')
@@ -13,6 +14,8 @@ model =  load_model(model_name = 'Hendrycks2020AugMix_ResNeXt', dataset =  'cifa
 
 id = "1eJu4wBxzeqf4INlOkuBr9Co1NTG4wIVG"
 output = "./pretrain/resnet8_cifar10.ckpt"
+
+os.makedirs('./pretrain')
 gdown.download(id = id, output = output)
 
 arr = np.array([
