@@ -64,7 +64,7 @@ exp_args = dict(
 
 exp_args = EasyDict(exp_args)
 
-lp_list  = [('4area.npy', 20), ('5area.npy', 20), ('8area.py', 16), ('15area.npy', 15)]
+lp_list  = [('4area.npy', 20), ('5area.npy', 20), ('8area.npy', 16), ('15area.npy', 15)]
 for part_path, num_client in lp_list:
     print('Partition path: ', part_path)
     print('Num client: ', num_client)
