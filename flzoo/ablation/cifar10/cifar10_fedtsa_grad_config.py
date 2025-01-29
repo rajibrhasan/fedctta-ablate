@@ -63,14 +63,18 @@ exp_args = dict(
 
 exp_args = EasyDict(exp_args)
 
-lp_list  = [1, 10, 20, 40, 50]
-for lp in lp_list:
-    print('Loop: ', lp)
+lp_list  = [('4area.npy', 20), ('5area.npy', 20), ('8area.py', 16), ('15area.npy', 15)]
+for part_path, num_client in lp_list:
+    print('Partition path: ', part_path)
+    print('Num client: ', num_client)
+
     seed = random.randint(1, 1000)
     iid_text = "niid" if exp_args.other.niid else "iid"
-    exp_args.other.loop = lp
+    exp_args.other.partition_path = part_path
+    exp_args.client.client_num = num_client
 
-    file_name = f"{exp_args.method.name}_{exp_args.method.data_used}_{exp_args.method.feat_sim}_{exp_args.other.method}_lp_{exp_args.other.loop}_seed{seed}_{now}"
+    file_name = f"{exp_args.method.name}_{part_path.split('.')[-1]}_{exp_args.method.data_used}_{exp_args.method.feat_sim}_{exp_args.other.method}_lp_{exp_args.other.loop}_seed{seed}_{now}"
     exp_args.other.logging_path = os.path.join('logging', exp_args.data.dataset, "tta_"+exp_args.other.method, iid_text, file_name )
     print(exp_args.other.logging_path)
     FedTTA_Pipeline(exp_args, seed=seed)
+   
