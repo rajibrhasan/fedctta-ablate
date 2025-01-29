@@ -137,7 +137,7 @@ class FedGraphServerGroup(ParameterServerGroup):
             prob.solve()
 
             self.graph_matrix[i, :] = torch.Tensor(x.value)
-        print(self.graph_matrix)
+        # print(self.graph_matrix)
         return self.graph_matrix
 
     def aggregate_grad(self,  train_round, feature_indicator):
@@ -210,7 +210,7 @@ class FedGraphServerGroup(ParameterServerGroup):
 
     def aggregate_bn(self, train_round, global_mean, feature_indicator):
         self.graph_matrix = self.update_graph_matrix_neighbor_bn(global_mean, similarity_matric='all')
-        print(self.graph_matrix)
+        # print(self.graph_matrix)
 
         n_chosen_layer = len(global_mean[0])
         client_num = self.args.client.client_num

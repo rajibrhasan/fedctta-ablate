@@ -111,7 +111,7 @@ class TTAServerGroup(ParameterServerGroup):
                 w_time[k] = w_time[k].cuda()
             weight_list.append(w_time)
 
-        print(space_att)
+        # print(space_att)
         for cidx in range(client_num):
             w_space = copy.deepcopy(self.clients[cidx].model.state_dict())
             S_all = space_att.shape[0]
@@ -298,7 +298,7 @@ class TTAServerGroup(ParameterServerGroup):
             similarity_matrix = torch.mm(indicator, indicator.T)
             space_att = torch.softmax(similarity_matrix, dim = -1)
 
-        print(space_att)
+        # print(space_att)
 
         self.collaboration_graph.append(space_att)
         sum_mean, sum_var = self.st_agg_bn(space_att=space_att, global_mean=global_mean, wotime=True)
