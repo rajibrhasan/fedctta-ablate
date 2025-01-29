@@ -16,6 +16,7 @@ def get_model(args: dict) -> torch.nn.Module:
     except AttributeError:
         warnings.warn('Fail to set: torch.set_float32_matmul_precision("high")')
     # Get the model constructed by args.
+
     model_name = args.model.pop('name')
     model = MODEL_REGISTRY.build(model_name, **args.model)
 

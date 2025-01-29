@@ -156,20 +156,28 @@ class TTAServerGroup(ParameterServerGroup):
         # # Apply softmax row-wise
         # softmax_similarity = F.softmax(scaled_similarity, dim=1)
 
-        diff_mat = torch.stack(feature_indicator, dim = 0)
-        pairwise_diff = diff_mat.unsqueeze(0) - diff_mat.unsqueeze(1)
+        indicator = torch.stack(feature_indicator, dim = 0)
+
+        if self.args.method.metric == 'euclid':
+            pairwise_diff = indicator.unsqueeze(0) - indicator.unsqueeze(1)
+            threshold = torch.mean(pairwise_diff)
+            mask = (pairwise_diff <= threshold).all(dim=-1)  # Shape: [n, n]
+            # `mask` is True where elements are within the threshold, False otherwise
+            # print(mask)
+            # Apply mask to pairwise_norm
+            pairwise_norm = -1 * torch.norm(pairwise_diff, dim=-1)  # Shape: [n, n]
+            # pairwise_norm = pairwise_norm.masked_fill(~mask, float('-inf'))  # Mask elements > threshold
+
+            # Compute softmax on the masked pairwise_norm
+            space_att = torch.softmax(pairwise_norm, dim=-1)  # Shape: [n, n]
         
-        threshold = torch.mean(pairwise_diff)
-        mask = (pairwise_diff <= threshold).all(dim=-1)  # Shape: [n, n]
-        # `mask` is True where elements are within the threshold, False otherwise
+        elif self.args.method.metric == 'cosine':
+            normalized_indicator = F.normalize(indicator, p=2, dim=1)
+            # Compute cosine similarity by multiplying the tensor with its transpose
+            similarity_matrix = torch.mm(normalized_indicator, normalized_indicator.T)
+            space_att = torch.softmax(similarity_matrix, dim = -1)
 
-        # print(mask)
-        # Apply mask to pairwise_norm
-        pairwise_norm = -1 * torch.norm(pairwise_diff, dim=-1)  # Shape: [n, n]
-        # pairwise_norm = pairwise_norm.masked_fill(~mask, float('-inf'))  # Mask elements > threshold
 
-        # Compute softmax on the masked pairwise_norm
-        space_att = torch.softmax(pairwise_norm, dim=-1)  # Shape: [n, n]
 
         self.st_agg_grad(space_att, space_att)
         self.collaboration_graph.append(space_att)
@@ -180,7 +188,6 @@ class TTAServerGroup(ParameterServerGroup):
         # for cidx in range(client_num):
         #     self.history_weight[cidx].append(self.clients[cidx].model.state_dict())
 
-        # if self.args.other.feat_sim == 'pvec':
             
 
         if self.args.group.aggregation_method == 'st':
@@ -212,7 +219,8 @@ class TTAServerGroup(ParameterServerGroup):
             space_att = self.S_similarity(feature_indicator)
             self.st_agg_grad(space_att=space_att, wotime=True)
 
-        self.collaboration_graph.append(space_att)
+        if self.args.group.aggregation_method != 'avg':
+            self.collaboration_graph.append(space_att)
 
     def st_agg_bn(self, time_att=None, space_att=None, global_mean=None, wotime=False):
         n_chosen_layer = len(global_mean[0])
@@ -269,20 +277,28 @@ class TTAServerGroup(ParameterServerGroup):
         sum_mean = [[[] for _ in range(n_chosen_layer)] for _ in range(client_num)]
         sum_var = [[[] for _ in range(n_chosen_layer)] for _ in range(client_num)]
        
-        diff_mat = torch.stack(feature_indicator, dim = 0)
-        pairwise_diff = diff_mat.unsqueeze(0) - diff_mat.unsqueeze(1)
+        indicator = torch.stack(feature_indicator, dim = 0)
+
+        if self.args.method.metric == 'euclid':
+            pairwise_diff = indicator.unsqueeze(0) - indicator.unsqueeze(1)
+            threshold = torch.mean(pairwise_diff)
+            mask = (pairwise_diff <= threshold).all(dim=-1)  # Shape: [n, n]
+            # `mask` is True where elements are within the threshold, False otherwise
+            # print(mask)
+            # Apply mask to pairwise_norm
+            pairwise_norm = -1 * torch.norm(pairwise_diff, dim=-1)  # Shape: [n, n]
+            # pairwise_norm = pairwise_norm.masked_fill(~mask, float('-inf'))  # Mask elements > threshold
+
+            # Compute softmax on the masked pairwise_norm
+            space_att = torch.softmax(pairwise_norm, dim=-1)  # Shape: [n, n]
         
-        threshold = torch.mean(pairwise_diff)
-        mask = (pairwise_diff <= threshold).all(dim=-1)  # Shape: [n, n]
-        # `mask` is True where elements are within the threshold, False otherwise
+        elif self.args.method.metric == 'cosine':
+            # normalized_indicator = F.normalize(indicator, p=2, dim=1)
+            # Compute cosine similarity by multiplying the tensor with its transpose
+            similarity_matrix = torch.mm(indicator, indicator.T)
+            space_att = torch.softmax(similarity_matrix, dim = -1)
 
-        # print(mask)
-        # Apply mask to pairwise_norm
-        pairwise_norm = -1 * torch.norm(pairwise_diff, dim=-1)  # Shape: [n, n]
-        # pairwise_norm = pairwise_norm.masked_fill(~mask, float('-inf'))  # Mask elements > threshold
-
-        # Compute softmax on the masked pairwise_norm
-        space_att = torch.softmax(pairwise_norm, dim=-1)  # Shape: [n, n]
+        print(space_att)
 
         self.collaboration_graph.append(space_att)
         sum_mean, sum_var = self.st_agg_bn(space_att=space_att, global_mean=global_mean, wotime=True)
@@ -349,7 +365,7 @@ class TTAServerGroup(ParameterServerGroup):
             space_att= self.S_similarity(feature_indicator)
             sum_mean, sum_var = self.st_agg_bn(space_att=space_att, global_mean=global_mean, wotime=True)
 
-        print(space_att)
+        # print(space_att)
         for cidx in range(client_num):
             self.clients[cidx].update_bnstatistics(sum_mean[cidx], sum_var[cidx])
 

@@ -1,5 +1,6 @@
 from .generic_model_pipeline import generic_model_pipeline
 from .personalized_model_pipeline import personalized_model_pipeline
 from .fltta_model_pipeline import FedTTA_Pipeline
+from .train_model_pipeline import Train_Model
 # from .plot_feature_pipeline import Feature_Corupt_Pipeline
 # from .toy_example_pipeline import ToyExample_Pipeline

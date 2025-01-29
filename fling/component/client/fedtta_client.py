@@ -79,15 +79,12 @@ class FedTTAClient(ClientTemplate):
                 elif self.args.method.feat_sim == 'output':
                     feature_indicator = out.mean(dim=0)
 
-                else:
+                elif self.args.method.feat_sim == 'feature':
                     feature_mean = feature.mean(dim=0)
                     feature_indicator = feature_mean
-
-                if self.feat_ema2 is None:
-                    self.feat_ema2 = feature_indicator
+                
                 else:
-                    self.feat_ema2 = self.args.other.alpha * self.feat_ema2 +  (1-self.args.other.alpha) * feature_indicator
-
+                    raise NotImplementedError
 
                 loss = criterion(out, batch_y)
                 monitor.append(
@@ -100,7 +97,16 @@ class FedTTAClient(ClientTemplate):
 
         mean_monitor_variables = monitor.variable_mean()
         self.model.to('cpu')
-        return mean_monitor_variables, self.feat_ema2
+
+        if self.args.method.name == 'ours':
+            if self.feat_ema2 is None:
+                self.feat_ema2 = feature_indicator
+            else:
+                self.feat_ema2 = self.args.other.alpha * self.feat_ema2 +  (1-self.args.other.alpha) * feature_indicator
+            
+            return mean_monitor_variables, self.feat_ema2
+
+        return mean_monitor_variables, feature_indicator
 
     def update_bnstatistics(self, clean_mean, clean_var):
         self.global_mean = clean_mean
@@ -192,9 +198,6 @@ class FedTTAClient(ClientTemplate):
         self.model.eval()
         self.model.requires_grad_(False)
 
-        # criterion = nn.CrossEntropyLoss()
-        # monitor = VariableMonitor()
-
        
         preprocessed_data = self.preprocess_data(test_data)
         batch_x, batch_y = preprocessed_data['x'], preprocessed_data['y']
@@ -202,28 +205,19 @@ class FedTTAClient(ClientTemplate):
 
         if self.args.method.feat_sim =='output':
             feature_indicator = out.mean(dim=0)
-        else:
+        elif self.args.method.feat_sim =='feature':
             feature_indicator = feature.mean(dim = 0)
+        
+        else:
+            raise NotImplementedError
 
         if self.feat_ema is None:
             self.feat_ema = feature_indicator
         else:
             self.feat_ema = self.args.other.alpha * self.feat_ema +  (1-self.args.other.alpha) * feature_indicator
 
-        # feature_indicator = outputs.mean(dim=0)
-
-            # y_pred = torch.argmax(outputs, dim=-1)
-            # loss = criterion(outputs, batch_y)
-            # monitor.append(
-            #     {
-            #         'test_acc': torch.mean((y_pred == preprocessed_data['y']).float()).item(),
-            #         'test_loss': loss.item()
-            #     },
-            #     weight=preprocessed_data['y'].shape[0]
-            # )
-
-        # mean_monitor_variables = monitor.variable_mean()
         self.model.to('cpu')
+
         return self.feat_ema
 
 

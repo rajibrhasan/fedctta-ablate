@@ -13,6 +13,11 @@
 *.mov
 *.pkl
 
+plots/
+plts_tsa/
+collaboration_graph_heatmap_2.gif
+collaboration_graph_heatmap_fedtsa.gif
+
 pkg/
 src/
 wandb/
